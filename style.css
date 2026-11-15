@@ -20,3 +20,5 @@
 @media(max-height:750px){#zoomPresets{margin-top:10px;padding-top:8px}#cameraStage .zoomRow input{height:60px}}
 
 .clip.dropBefore{box-shadow:0 -3px 0 #222}.clip.dropAfter{box-shadow:0 3px 0 #222}
+
+.captionInputWrap{position:relative}.captionInputWrap #caption{padding-right:50px}.captionInputWrap #clearCaption{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:44px;height:44px;min-height:44px;padding:0;background:transparent;color:#888;font-size:25px;line-height:1;border-radius:12px}

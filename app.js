@@ -152,3 +152,5 @@ function bindClipDrag(item){
  };
  item.addEventListener('pointerup',e=>finish(e));item.addEventListener('pointercancel',e=>finish(e,true));item.addEventListener('lostpointercapture',e=>{if(drag)finish(e,true);});
 }
+
+$('clearCaption').onclick=async()=>{if(busy)return;$('caption').value='';await edit();$('caption').focus();};
