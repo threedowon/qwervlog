@@ -28,7 +28,7 @@ function layoutFor(seed) {
     return [x,y,w,h];
   });
 }
-function clipLayout(clip) { const crops=clipCrops(clip); return (clip.layout || layoutFor(clip.id)).map((r,i)=>[...r.slice(0,4),crops[i]]); }
+function clipLayout(clip) { const crops=clipCrops(clip),indices=photoIndicesFor(clip); return (clip.layout || layoutFor(clip.id)).map((r,i)=>[...r.slice(0,4),{...crops[i],bounds:clip.sourceBounds?.[indices[i]]}]); }
 
 // Three independent random instants in separated portions of the recording.
 // A clip ID makes legacy clips stable; new clips persist their chosen indices.
@@ -56,6 +56,13 @@ function clipCrops(clip){
  return zooms.map((zoom,i)=>({zoom,x:Math.max(0,Math.min(1,anchors[i][0]+random()*.16-.08)),y:Math.max(0,Math.min(1,anchors[i][1]+random()*.16-.08))}));
 }
 function cropRect(sw,sh,w,h,crop={zoom:1,x:.5,y:.5}){
- const scale=Math.max(w/sw,h/sh)*crop.zoom,cw=w/scale,ch=h/scale;
- return [(sw-cw)*crop.x,(sh-ch)*crop.y,cw,ch];
+ const [bx,by,bw,bh]=crop.bounds||[0,0,sw,sh];
+ const scale=Math.max(w/bw,h/bh)*crop.zoom,cw=w/scale,ch=h/scale;
+ return [bx+(bw-cw)*crop.x,by+(bh-ch)*crop.y,cw,ch];
+}
+
+function visibleBounds([x,y,w,h],cw,ch){
+ // Inset by two pixels to avoid JPEG edge ringing from the padded area.
+ const left=Math.max(0,x),top=Math.max(0,y),right=Math.min(cw,x+w),bottom=Math.min(ch,y+h);
+ return [left+(left>0?2:0),top+(top>0?2:0),right-left-(left>0?2:0)-(right<cw?2:0),bottom-top-(top>0?2:0)-(bottom<ch?2:0)];
 }
