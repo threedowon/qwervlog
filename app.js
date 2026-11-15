@@ -52,7 +52,7 @@ function renderList(){
  for(const id of ['play','export'])$(id).disabled=busy||!clips.length;
 }
 
-async function select(i){stopLive();selected=i;let clip=clips[i];if(!clip)return;$('empty').hidden=true;$('caption').value=clip.caption;$('time').value=clip.time;syncTimeControl();$('collage').checked=clip.collage;syncCollageIcon();let imgs=await Promise.all(collageFrames(clip).map(image));draw(imgs[1],imgs,clip.caption,clip.time,clip.collage,clipLayout(clip));renderList()}
+async function select(i){stopLive();selected=i;let clip=clips[i];if(!clip)return;$('empty').hidden=true;syncTimeControl();let imgs=await Promise.all(collageFrames(clip).map(image));draw(imgs[1],imgs,clip.caption,clip.time,clip.collage,clipLayout(clip));renderList()}
 async function move(i,delta){let j=i+delta;if(j<0||j>=clips.length)return;[clips[i],clips[j]]=[clips[j],clips[i]];await select(j);persist()}
 async function remove(i){clips.splice(i,1);selected=Math.min(i,clips.length-1);renderList();persist();if(selected>=0)select(selected);else{$('empty').hidden=false;ctx.clearRect(0,0,540,960)}}
 
@@ -94,8 +94,10 @@ $('settingsClose').onclick=async()=>{
  const session=settingsOriginal,values={caption:$('editCaption').value,time:$('editTime').value,collage:$('editCollage').checked};
  const index=session.clipId===null?-1:clips.findIndex(c=>c.id===session.clipId);
  if(session.clipId!==null&&index<0){discardSettings();$('settingsSheet').close();return;}
- if(index>=0)Object.assign(clips[index],values);
- $('caption').value=values.caption;if(!$('editTime').disabled)$('time').value=values.time;$('collage').checked=values.collage;
+ if(index>=0){Object.assign(clips[index],values);}else{
+  // Capture defaults belong to the camera, never to a selected gallery clip.
+  $('caption').value=values.caption;$('collage').checked=values.collage;
+ }
  settingsOriginal=null;syncCollageIcon();$('settingsSheet').close();
  if(index>=0){await select(index);await persist();}
 };
