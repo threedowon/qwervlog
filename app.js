@@ -2,6 +2,7 @@
 const $=id=>document.getElementById(id), canvas=$('preview'),ctx=canvas.getContext('2d');
 let pendingClip=null;
 let settingsOriginal=null;
+let durationOriginal=null;
 const clipLengths={normal:2,timelapse:6};
 let suppressClipClickUntil=0;
 let clips=[],selected=-1,stream=null,facing='environment',mode='normal',busy=false,cancelled=false,live=false,raf=0,db=null,resultURL=null,resultBlob=null;
@@ -12,7 +13,7 @@ const image=src=>new Promise((resolve,reject)=>{let i=new Image();i.onload=()=>r
 function cover(c,source,x,y,w,h,crop){const sw=source.videoWidth||source.naturalWidth||source.width,sh=source.videoHeight||source.naturalHeight||source.height;if(!sw||!sh)return;const bounded=crop?{...crop,bounds:crop.bounds||detectPadding(source)}:undefined;c.drawImage(source,...cropRect(sw,sh,w,h,bounded),x,y,w,h)}
 function draw(source,photos=[],caption=$('caption').value,time=$('time').value,collage=$('collage').checked,layout=layoutFor('preview')){ctx.fillStyle='#232b23';ctx.fillRect(0,0,540,960);if(source){if(source===$('camera'))paintCamera(ctx,source,540,960);else cover(ctx,source,0,0,540,960);}if(collage&&photos.length===3){layout.forEach((r,i)=>cover(ctx,photos[i],...r))}ctx.save();ctx.fillStyle='white';ctx.shadowColor='#0008';ctx.shadowBlur=5;ctx.textAlign='center';ctx.font='400 25px -apple-system,Arial,sans-serif';ctx.fillText(time||'',270,441);drawCaption(ctx,caption,270,465);ctx.restore()}
 function stopLive(){live=false;cancelAnimationFrame(raf)}
-function loop(){if(!live)return;draw($('camera'),[],$('caption').value,liveClock());raf=requestAnimationFrame(loop)}
+function loop(){if(!live)return;draw($('camera'),[],settingsOriginal?.caption??$('caption').value,liveClock());raf=requestAnimationFrame(loop)}
 async function camera(deviceId){if(busy||cameraOpening)return;cameraOpening=true;$('record').disabled=true;status('카메라를 연결하고 있어요. 권한 요청이 나오면 허용해 주세요.');try{if(!navigator.mediaDevices?.getUserMedia)throw Error('Safari에서 다시 열거나 영상을 가져오세요.');stopLive();stream?.getTracks().forEach(t=>t.stop());const video={resizeMode:{ideal:'none'}};if(typeof deviceId==='string'&&deviceId)video.deviceId={exact:deviceId};else video.facingMode={ideal:facing};stream=await navigator.mediaDevices.getUserMedia({video,audio:false});$('camera').srcObject=stream;await $('camera').play();await configureCamera();if($('shootScreen').hidden||busy||pendingClip){stream.getTracks().forEach(t=>t.stop());stream=null;return}selected=-1;$('empty').hidden=true;live=true;loop();status('구도를 맞춘 뒤 아래 녹화 버튼을 누르세요. 미리보기는 저장되지 않아요.')}catch(e){stream?.getTracks().forEach(t=>t.stop());stream=null;status(e.name==='NotAllowedError'?'카메라 권한을 허용한 뒤 가운데 카메라 아이콘을 눌러주세요.':'자동 미리보기를 시작하지 못했어요. 가운데 카메라 아이콘을 눌러주세요.')}finally{cameraOpening=false;$('record').disabled=busy;syncZoomButtons()}}
 
 function lock(on){busy=on;document.body.classList.toggle('busy',on);for(const id of ['shootTab','galleryTab','textEdit','keep','retake','collageToggle','durationOpen'])$(id).disabled=on||(Boolean(pendingClip)&&!['keep','retake'].includes(id));for(const id of ['record','cameraStart','flip','normal','timelapse','duration','upload','play','export','caption','time','collage','zoom'])$(id).disabled=on||(['play','export'].includes(id)&&!clips.length);$('cancel').hidden=!on;syncZoomButtons();syncTimeControl();renderList()}
@@ -28,7 +29,7 @@ function saveDurations(){
  if(Number($('duration').value)<clipLengths.timelapse)$('duration').value=clipLengths.timelapse;
  updateDurationLabels();
 }
-function openDuration(){if(busy||pendingClip)return;$('clipSeconds').value=clipLengths[mode];$('captureDurationField').hidden=mode==='normal';updateDurationLabels();$('durationSheet').showModal();}
+function openDuration(){if(busy||pendingClip)return;durationOriginal={capture:$('duration').value};$('clipSeconds').value=clipLengths[mode];$('captureDurationField').hidden=mode==='normal';updateDurationLabels();$('durationSheet').showModal();}
 
 async function initDB(){try{db=await new Promise((res,rej)=>{let r=indexedDB.open('after-hours-v1',1);r.onupgradeneeded=()=>r.result.createObjectStore('story');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});let saved=await new Promise((res,rej)=>{let r=db.transaction('story').objectStore('story').get('clips');r.onsuccess=()=>res(r.result||[]);r.onerror=()=>rej(r.error)});clips=saved;renderList();$('empty').hidden=false}catch(e){status('브라우저 보관함을 사용할 수 없어요. 촬영 후 파일로 저장해 주세요.')}}
 async function persist(){$('downloadArea').hidden=true;if(!db){status('현재 세션에만 보관 중이에요. 파일로 저장해 주세요.');return}try{await new Promise((res,rej)=>{let tx=db.transaction('story','readwrite');tx.objectStore('story').put(clips,'clips');tx.oncomplete=res;tx.onerror=()=>rej(tx.error);tx.onabort=()=>rej(tx.error)})}catch(e){status('브라우저 저장 공간이 부족해요. 현재 영상을 파일로 저장해 주세요.')}}
@@ -121,10 +122,23 @@ function drawCaption(c,text,x,y){
 function syncCollageIcon(){$('collageToggle').setAttribute('aria-pressed',String($('collage').checked));}
 $('collageToggle').onclick=()=>{if(busy||pendingClip)return;$('collage').checked=!$('collage').checked;syncCollageIcon();status($('collage').checked?'콜라주 켜짐 · 촬영 후 사진 3장을 추가해요.':'콜라주 꺼짐');};
 
-$('durationOpen').onclick=openDuration;$('clipSeconds').oninput=saveDurations;
-$('duration').oninput=()=>{updateDurationLabels();};
-$('durationClose').onclick=()=>{if(!$('clipSeconds').reportValidity())return;if(mode==='timelapse'&&!$('duration').reportValidity())return;saveDurations();$('durationSheet').close();};
-$('durationSheet').addEventListener('close',()=>{$('duration').value=Math.min(600,Math.max(clipLengths.timelapse,Number($('duration').value)||30));updateDurationLabels();});
+function previewDuration(){
+ const n=Number($('clipSeconds').value);
+ if(!Number.isInteger(n)||n<1||n>30){$('durationSummary').textContent='1~30초 사이로 입력해 주세요.';return;}
+ if(mode==='timelapse')$('duration').min=n;
+ $('durationSummary').textContent=mode==='normal'?`${n}초 동안 촬영해요.`:`${Math.max(n,Number($('duration').value)||30)}초를 ${n}초로 압축해요.`;
+}
+function discardDuration(){
+ if(!durationOriginal)return;
+ $('duration').value=durationOriginal.capture;$('duration').min=clipLengths.timelapse;$('clipSeconds').value=clipLengths[mode];durationOriginal=null;updateDurationLabels();
+}
+$('durationOpen').onclick=openDuration;$('clipSeconds').oninput=previewDuration;
+$('duration').oninput=previewDuration;
+$('durationClose').onclick=()=>{if(!$('clipSeconds').reportValidity())return;if(mode==='timelapse'&&!$('duration').reportValidity())return;saveDurations();durationOriginal=null;$('durationSheet').close();};
+$('durationCancel').onclick=()=>{discardDuration();$('durationSheet').close();};
+$('durationSheet').addEventListener('cancel',discardDuration);
+$('durationSheet').addEventListener('close',discardDuration);
+$('durationSheet').onclick=e=>{if(e.target===$('durationSheet')){const r=e.target.getBoundingClientRect();if(e.clientY<r.top||e.clientY>r.bottom||e.clientX<r.left||e.clientX>r.right){discardDuration();e.target.close();}}};
 for(const b of document.querySelectorAll('[data-zoom]'))b.onclick=()=>{if(b.disabled)return;$('zoom').value=b.dataset.zoom;changeZoom();};
 syncZoomButtons();syncCollageIcon();
 
