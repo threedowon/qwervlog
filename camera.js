@@ -8,7 +8,7 @@ let hardwareBase=1, digitalZoom=1, hardwareZoom=false, cameraOpening=false, zoom
 function paintCamera(c,source,w,h){
   const sw=source.videoWidth,sh=source.videoHeight;if(!sw||!sh)return;
   c.save();c.fillStyle='#141714';c.fillRect(0,0,w,h);
-  const r=cameraRect(sw,sh,w,h,$('framing').value,digitalZoom);
+  const r=cameraRect(sw,sh,w,h,'contain',digitalZoom);
   c.drawImage(source,...r);c.restore();
 }
 function resumeCamera(){if(stream?.active&&!busy){$('empty').hidden=true;stopLive();live=true;loop()}}
@@ -19,7 +19,6 @@ async function configureCamera(){
     try{hardwareBase=Math.max(caps.zoom.min,Math.min(caps.zoom.max,1));await track.applyConstraints({advanced:[{zoom:hardwareBase}]});hardwareZoom=true;slider.min=caps.zoom.min/hardwareBase;slider.max=Math.min(caps.zoom.max/hardwareBase,6);slider.step=(caps.zoom.step||.1)/hardwareBase;slider.value=(track.getSettings().zoom??hardwareBase)/hardwareBase;}catch(e){/* Retain digital framing when hardware control is unavailable. */}
   }
   $('zoomValue').textContent=Number(slider.value).toFixed(1)+'×';
-  $('zoomHelp').textContent=hardwareZoom?'기본 배율 1.0×에서 시작해요. 위로 올리면 확대돼요.':'이 카메라는 화면 확대를 지원해요. 더 넓게 보려면 전체 보기나 다른 렌즈를 선택하세요.';
-  try{const devices=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput'),select=$('lens');select.replaceChildren();devices.forEach((d,i)=>{let o=document.createElement('option');o.value=d.deviceId;o.textContent=d.label||`카메라 ${i+1}`;select.append(o)});select.value=track.getSettings().deviceId||'';$('lensRow').hidden=devices.length<2;}catch(e){$('lensRow').hidden=true}
+
 }
 async function changeZoom(){if(busy||cameraOpening||zoomChanging)return;const value=Number($('zoom').value);if(hardwareZoom&&stream?.active){zoomChanging=true;$('zoom').disabled=true;$('record').disabled=true;try{const track=stream.getVideoTracks()[0];await track.applyConstraints({advanced:[{zoom:value*hardwareBase}]});$('zoom').value=(track.getSettings().zoom??value*hardwareBase)/hardwareBase;}catch(e){status('이 배율은 적용되지 않았어요. 다른 배율이나 렌즈를 선택해 주세요.');$('zoom').value=(stream.getVideoTracks()[0].getSettings().zoom||hardwareBase)/hardwareBase;}finally{zoomChanging=false;$('zoom').disabled=false;$('record').disabled=false}}else digitalZoom=value;$('zoomValue').textContent=Number($('zoom').value).toFixed(1)+'×';resumeCamera()}
