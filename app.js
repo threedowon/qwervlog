@@ -6,7 +6,7 @@ $('time').value=localClock(new Date());
 const status=t=>$('status').textContent=t;
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 const image=src=>new Promise((resolve,reject)=>{let i=new Image();i.onload=()=>resolve(i);i.onerror=reject;i.src=src});
-function cover(c,source,x,y,w,h){const sw=source.videoWidth||source.naturalWidth||source.width,sh=source.videoHeight||source.naturalHeight||source.height;if(!sw||!sh)return;let s=Math.max(w/sw,h/sh);c.drawImage(source,(sw-w/s)/2,(sh-h/s)/2,w/s,h/s,x,y,w,h)}
+function cover(c,source,x,y,w,h,crop){const sw=source.videoWidth||source.naturalWidth||source.width,sh=source.videoHeight||source.naturalHeight||source.height;if(!sw||!sh)return;c.drawImage(source,...cropRect(sw,sh,w,h,crop),x,y,w,h)}
 function draw(source,photos=[],caption=$('caption').value,time=$('time').value,collage=$('collage').checked,layout=layoutFor('preview')){ctx.fillStyle='#232b23';ctx.fillRect(0,0,540,960);if(source){if(source===$('camera'))paintCamera(ctx,source,540,960);else cover(ctx,source,0,0,540,960);}if(collage&&photos.length===3){layout.forEach((r,i)=>cover(ctx,photos[i],...r))}ctx.save();ctx.fillStyle='white';ctx.shadowColor='#0008';ctx.shadowBlur=5;ctx.textAlign='center';ctx.font='400 25px -apple-system,Arial,sans-serif';ctx.fillText(time||'',270,441);let size=21;do{ctx.font=`${size}px Georgia,serif`;if(ctx.measureText(caption).width<490)break;size--}while(size>10);ctx.fillText(caption,270,465);ctx.restore()}
 function stopLive(){live=false;cancelAnimationFrame(raf)}
 function loop(){if(!live)return;draw($('camera'),[],$('caption').value,liveClock());raf=requestAnimationFrame(loop)}
@@ -26,9 +26,9 @@ function snapshot(source){let c=document.createElement('canvas');c.width=540;c.h
 async function add(frames,m,seconds,timing=beginTiming()){
  const id=crypto.randomUUID();pendingClip={id,layout:layoutFor(id),frames,mode:m,seconds,caption:$('caption').value,...timing,collage:$('collage').checked};
  stopLive();$('empty').hidden=true;
- pendingClip.photoIndices=photoIndicesFor(pendingClip);
+ pendingClip.photoIndices=photoIndicesFor(pendingClip);pendingClip.crops=clipCrops(pendingClip);
  const photos=await Promise.all(collageFrames(pendingClip).map(image));
- draw(photos[1],photos,pendingClip.caption,pendingClip.time,pendingClip.collage,pendingClip.layout);
+ draw(photos[1],photos,pendingClip.caption,pendingClip.time,pendingClip.collage,clipLayout(pendingClip));
  $('captureDock').hidden=true;$('reviewDock').hidden=false;$('textEdit').hidden=true;status('미리보기를 확인하고 담기를 눌러주세요.');
 }
 async function record(){if(busy||cameraOpening||zoomChanging)return;if(!stream||!stream.active){await camera();if(!stream?.active)return}cancelled=false;lock(true);try{stopLive();live=true;loop();$('counter').hidden=false;for(let n=3;n>0;n--){$('counter').textContent=n;await wait(1000);if(cancelled)throw Error('촬영을 취소했어요.')} $('counter').hidden=true;const timing=beginTiming();activeCaptureTime=timing.time;const seconds=mode==='normal'?2:6,duration=mode==='normal'?2:Number($('duration').value),count=seconds*15,frames=[],start=performance.now();for(let n=0;n<count;n++){let target=start+n*duration*1000/count;await wait(Math.max(0,target-performance.now()));if(cancelled||document.hidden)throw Error('촬영이 중단됐어요. 화면을 켠 상태에서 다시 찍어주세요.');frames.push(snapshot($('camera')));status(`촬영 중 · ${Math.min(duration,(performance.now()-start)/1000).toFixed(1)} / ${duration}초`)}await wait(Math.max(0,start+duration*1000-performance.now()));if(cancelled)throw Error('촬영을 취소했어요.');await add(frames,mode,seconds,timing)}catch(e){status(e.message)}finally{activeCaptureTime=null;$('counter').hidden=true;stopLive();lock(false)}}

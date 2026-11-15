@@ -28,7 +28,7 @@ function layoutFor(seed) {
     return [x,y,w,h];
   });
 }
-function clipLayout(clip) { return clip.layout || layoutFor(clip.id); }
+function clipLayout(clip) { const crops=clipCrops(clip); return (clip.layout || layoutFor(clip.id)).map((r,i)=>[...r.slice(0,4),crops[i]]); }
 
 // Three independent random instants in separated portions of the recording.
 // A clip ID makes legacy clips stable; new clips persist their chosen indices.
@@ -42,3 +42,20 @@ function photoIndicesFor(clip){
  return bands.map(([a,b])=>{const lo=Math.floor(a*n),hi=Math.min(n,Math.ceil(b*n));return Math.min(n-1,lo+Math.floor(random()*Math.max(1,hi-lo)));});
 }
 function collageFrames(clip,frames=clip.frames){return photoIndicesFor(clip).map(i=>frames[i]);}
+
+// Keep one wider shot, one medium crop and one close-up, in random order.
+function clipCrops(clip){
+ if(clip.crops?.length===3)return clip.crops;
+ let state=2166136261;
+ for(const c of String(clip.id)+'crop-v1')state=Math.imul(state^c.charCodeAt(0),16777619)>>>0;
+ const random=()=>{state^=state<<13;state^=state>>>17;state^=state<<5;return (state>>>0)/4294967296;};
+ const zooms=[1.05+random()*.2,1.4+random()*.25,1.9+random()*.4];
+ for(let i=2;i>0;i--){const j=Math.floor(random()*(i+1));[zooms[i],zooms[j]]=[zooms[j],zooms[i]];}
+ const anchors=[[.15,.2],[.8,.45],[.45,.85]];
+ for(let i=2;i>0;i--){const j=Math.floor(random()*(i+1));[anchors[i],anchors[j]]=[anchors[j],anchors[i]];}
+ return zooms.map((zoom,i)=>({zoom,x:Math.max(0,Math.min(1,anchors[i][0]+random()*.16-.08)),y:Math.max(0,Math.min(1,anchors[i][1]+random()*.16-.08))}));
+}
+function cropRect(sw,sh,w,h,crop={zoom:1,x:.5,y:.5}){
+ const scale=Math.max(w/sw,h/sh)*crop.zoom,cw=w/scale,ch=h/scale;
+ return [(sw-cw)*crop.x,(sh-ch)*crop.y,cw,ch];
+}
