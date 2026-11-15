@@ -2,6 +2,7 @@
 const $=id=>document.getElementById(id), canvas=$('preview'),ctx=canvas.getContext('2d');
 let pendingClip=null;
 const clipLengths={normal:2,timelapse:6};
+let suppressClipClickUntil=0;
 let clips=[],selected=-1,stream=null,facing='environment',mode='normal',busy=false,cancelled=false,live=false,raf=0,db=null,resultURL=null,resultBlob=null;
 $('time').value=localClock(new Date());
 const status=t=>$('status').textContent=t;
@@ -13,7 +14,7 @@ function stopLive(){live=false;cancelAnimationFrame(raf)}
 function loop(){if(!live)return;draw($('camera'),[],$('caption').value,liveClock());raf=requestAnimationFrame(loop)}
 async function camera(deviceId){if(busy||cameraOpening)return;cameraOpening=true;$('record').disabled=true;status('카메라를 연결하고 있어요. 권한 요청이 나오면 허용해 주세요.');try{if(!navigator.mediaDevices?.getUserMedia)throw Error('Safari에서 다시 열거나 영상을 가져오세요.');stopLive();stream?.getTracks().forEach(t=>t.stop());const video={resizeMode:{ideal:'none'}};if(typeof deviceId==='string'&&deviceId)video.deviceId={exact:deviceId};else video.facingMode={ideal:facing};stream=await navigator.mediaDevices.getUserMedia({video,audio:false});$('camera').srcObject=stream;await $('camera').play();await configureCamera();if($('shootScreen').hidden||busy||pendingClip){stream.getTracks().forEach(t=>t.stop());stream=null;return}selected=-1;$('empty').hidden=true;live=true;loop();status('구도를 맞춘 뒤 아래 녹화 버튼을 누르세요. 미리보기는 저장되지 않아요.')}catch(e){stream?.getTracks().forEach(t=>t.stop());stream=null;status(e.name==='NotAllowedError'?'카메라 권한을 허용한 뒤 가운데 카메라 아이콘을 눌러주세요.':'자동 미리보기를 시작하지 못했어요. 가운데 카메라 아이콘을 눌러주세요.')}finally{cameraOpening=false;$('record').disabled=busy;syncZoomButtons()}}
 
-function lock(on){busy=on;document.body.classList.toggle('busy',on);for(const id of ['shootTab','galleryTab','settingsOpen','textEdit','editClip','keep','retake','collageToggle','durationOpen'])$(id).disabled=on||(Boolean(pendingClip)&&!['keep','retake'].includes(id));for(const id of ['record','cameraStart','flip','normal','timelapse','duration','upload','play','export','caption','time','collage','zoom','cameraPreview'])$(id).disabled=on||(['play','export'].includes(id)&&!clips.length);$('cancel').hidden=!on;syncZoomButtons();syncTimeControl();renderList()}
+function lock(on){busy=on;document.body.classList.toggle('busy',on);for(const id of ['shootTab','galleryTab','textEdit','editClip','keep','retake','collageToggle','durationOpen'])$(id).disabled=on||(Boolean(pendingClip)&&!['keep','retake'].includes(id));for(const id of ['record','cameraStart','flip','normal','timelapse','duration','upload','play','export','caption','time','collage','zoom','cameraPreview'])$(id).disabled=on||(['play','export'].includes(id)&&!clips.length);$('cancel').hidden=!on;syncZoomButtons();syncTimeControl();renderList()}
 function setMode(m){mode=m;$('normal').classList.toggle('selected',m==='normal');$('timelapse').classList.toggle('selected',m==='timelapse');updateDurationLabels();}
 function updateDurationLabels(){
  $('normal').textContent=`일반 ${clipLengths.normal}초`;$('timelapse').textContent=`타임랩스 ${clipLengths.timelapse}초`;
@@ -26,11 +27,27 @@ function saveDurations(){
  if(Number($('duration').value)<clipLengths.timelapse)$('duration').value=clipLengths.timelapse;
  updateDurationLabels();
 }
-function openDuration(){if(busy||pendingClip)return;$('durationTitle').textContent=mode==='normal'?'일반 촬영 길이':'타임랩스 촬영 길이';$('clipSeconds').value=clipLengths[mode];$('captureDurationField').hidden=mode==='normal';updateDurationLabels();$('durationSheet').showModal();}
+function openDuration(){if(busy||pendingClip)return;$('clipSeconds').value=clipLengths[mode];$('captureDurationField').hidden=mode==='normal';updateDurationLabels();$('durationSheet').showModal();}
 
 async function initDB(){try{db=await new Promise((res,rej)=>{let r=indexedDB.open('after-hours-v1',1);r.onupgradeneeded=()=>r.result.createObjectStore('story');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});let saved=await new Promise((res,rej)=>{let r=db.transaction('story').objectStore('story').get('clips');r.onsuccess=()=>res(r.result||[]);r.onerror=()=>rej(r.error)});clips=saved;renderList();$('empty').hidden=false}catch(e){status('브라우저 보관함을 사용할 수 없어요. 촬영 후 파일로 저장해 주세요.')}}
 async function persist(){$('downloadArea').hidden=true;if(!db){status('현재 세션에만 보관 중이에요. 파일로 저장해 주세요.');return}try{await new Promise((res,rej)=>{let tx=db.transaction('story','readwrite');tx.objectStore('story').put(clips,'clips');tx.oncomplete=res;tx.onerror=()=>rej(tx.error);tx.onabort=()=>rej(tx.error)})}catch(e){status('브라우저 저장 공간이 부족해요. 현재 영상을 파일로 저장해 주세요.')}}
-function renderList(){let root=$('clips');root.replaceChildren();$('cutCount').textContent=clips.length;if(!clips.length){let p=document.createElement('p');p.className='hint';p.textContent='아직 담은 순간이 없어요.';root.append(p)}clips.forEach((clip,i)=>{let item=document.createElement('div');item.className='clip'+(i===selected?' selected':'');let img=document.createElement('img');img.src=clip.frames[0];img.alt=`${i+1}번째 컷 미리보기`;let edit=document.createElement('button');edit.className='edit';edit.textContent=`${i+1}. ${clip.mode==='timelapse'?'타임랩스':clip.mode==='sample'?'샘플':'일반'} · ${clip.seconds}초`;edit.disabled=busy;edit.onclick=()=>select(i);img.onclick=()=>{if(!busy)select(i)};item.append(img,edit);[['←',()=>move(i,-1)],['→',()=>move(i,1)],['×',()=>remove(i)]].forEach(([txt,fn])=>{let b=document.createElement('button');b.textContent=txt;b.disabled=busy;b.setAttribute('aria-label',txt==='×'?`${i+1}번 컷 삭제`:`${i+1}번 컷 순서 이동`);b.onclick=fn;item.append(b)});root.append(item)});$('total').textContent=`${clips.length} CUTS · ${clips.reduce((s,c)=>s+c.seconds,0)}초`;for(let id of ['play','export'])$(id).disabled=busy||!clips.length}
+function renderList(){
+ const root=$('clips');root.replaceChildren();$('cutCount').textContent=clips.length;
+ if(!clips.length){const p=document.createElement('p');p.className='hint';p.textContent='아직 담은 순간이 없어요.';root.append(p);}
+ clips.forEach((clip,i)=>{
+  const item=document.createElement('div');item.className='clip'+(i===selected?' selected':'');item.dataset.id=clip.id;
+  const img=document.createElement('img');img.src=clip.frames[0];img.alt=`${i+1}번째 컷 미리보기`;img.draggable=false;
+  const edit=document.createElement('button');edit.className='edit';edit.textContent=`${i+1}. ${clip.mode==='timelapse'?'타임랩스':clip.mode==='sample'?'샘플':'일반'} · ${clip.seconds}초`;edit.disabled=busy;
+  const choose=()=>{if(!busy&&performance.now()>suppressClipClickUntil)select(i);};edit.onclick=choose;img.onclick=choose;
+  const handle=document.createElement('button');handle.className='dragHandle';handle.textContent='⠿';handle.setAttribute('aria-label',`${i+1}번 컷 순서 변경`);handle.title='위아래로 드래그 · 키보드 방향키로 이동';handle.disabled=busy;
+  handle.onkeydown=e=>{if(!busy&&['ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();move(i,e.key==='ArrowUp'?-1:1);}};
+  const del=document.createElement('button');del.className='deleteClip';del.textContent='×';del.disabled=busy;del.setAttribute('aria-label',`${i+1}번 컷 삭제`);del.onclick=()=>{if(performance.now()>suppressClipClickUntil)remove(i);};
+  item.append(img,edit,handle,del);root.append(item);bindClipDrag(item);
+ });
+ $('total').textContent=`${clips.length} CUTS · ${clips.reduce((s,c)=>s+c.seconds,0)}초`;
+ for(const id of ['play','export'])$(id).disabled=busy||!clips.length;
+}
+
 async function select(i){stopLive();selected=i;let clip=clips[i];if(!clip)return;$('empty').hidden=true;$('caption').value=clip.caption;$('time').value=clip.time;syncTimeControl();$('collage').checked=clip.collage;syncCollageIcon();let imgs=await Promise.all(collageFrames(clip).map(image));draw(imgs[1],imgs,clip.caption,clip.time,clip.collage,clipLayout(clip));renderList()}
 async function move(i,delta){let j=i+delta;if(j<0||j>=clips.length)return;[clips[i],clips[j]]=[clips[j],clips[i]];await select(j);persist()}
 async function remove(i){clips.splice(i,1);selected=Math.min(i,clips.length-1);renderList();persist();if(selected>=0)select(selected);else{$('empty').hidden=false;ctx.clearRect(0,0,540,960)}}
@@ -52,10 +69,10 @@ for(let index=0;index<clips.length;index++){let clip=clips[index],images=prepare
 if(recorder){await new Promise((res,rej)=>{recorder.onstop=res;recorder.onerror=()=>rej(Error('영상 저장 중 오류가 발생했어요.'));recorder.stop()});resultBlob=new Blob(chunks,{type:recorder.mimeType});if(resultURL)URL.revokeObjectURL(resultURL);resultURL=URL.createObjectURL(resultBlob);$('result').src=resultURL;$('download').href=resultURL;$('download').download=`after-hours-${new Date().toISOString().slice(0,10)}.${resultBlob.type.includes('mp4')?'mp4':'webm'}`;$('downloadArea').hidden=false;status(`완성했어요! ${clips.reduce((s,c)=>s+c.seconds,0)}초 · ${resultBlob.type.includes('mp4')?'MP4':'WebM'} · 아래에서 다운로드하거나 공유하세요.`)}else status('모든 컷을 재생했어요.')}catch(e){status(e.message);if(recorder?.state==='recording')recorder.stop()}finally{outputStream?.getTracks().forEach(t=>t.stop());lock(false)}}
 $('cameraStart').onclick=()=>{selected=-1;camera()};$('cameraPreview').onclick=()=>{$('settingsSheet').close();showScreen('shoot');startNext();if(!stream?.active)camera()};$('zoom').oninput=changeZoom;$('flip').onclick=()=>{facing=facing==='environment'?'user':'environment';camera()};$('normal').onclick=()=>setMode('normal');$('timelapse').onclick=()=>setMode('timelapse');$('record').onclick=record;$('cancel').onclick=()=>{cancelled=true};$('upload').onchange=e=>importVideo(e.target.files[0]);$('play').onclick=()=>sequence(false);$('export').onclick=()=>sequence(true);['caption','time','collage'].forEach(id=>$(id).onchange=edit);$('share').onclick=async()=>{try{let file=new File([resultBlob],$('download').download,{type:resultBlob.type});if(navigator.canShare?.({files:[file]}))await navigator.share({files:[file]});else $('download').click()}catch(e){if(e.name!=='AbortError')status('공유하지 못했어요. 다운로드 버튼으로 저장해주세요.')}};document.addEventListener('visibilitychange',()=>{if(document.hidden&&busy)cancelled=true});window.addEventListener('pagehide',()=>stream?.getTracks().forEach(t=>t.stop()));setMode('normal');syncTimeControl();initDB().finally(()=>{if(!$('shootScreen').hidden&&!busy&&!pendingClip&&!stream?.active)camera();});
 
-function openSettings(textOnly=false){if(busy||pendingClip)return;syncTimeControl();$('sheetTitle').textContent=!$('galleryScreen').hidden?'컷 수정':textOnly?'문구 수정':'촬영 설정';$('settingsSheet').classList.toggle('captionOnly',textOnly&&$('galleryScreen').hidden);$('settingsSheet').showModal();if(textOnly)$('caption').focus();}
+function openSettings(textOnly=false){if(busy||pendingClip)return;syncTimeControl();$('settingsSheet').classList.toggle('captionOnly',textOnly&&$('galleryScreen').hidden);$('settingsSheet').showModal();if(textOnly)$('caption').focus();}
 function showScreen(screen){if(busy||pendingClip)return;const gallery=screen==='gallery';stopLive();$('shootScreen').hidden=gallery;$('galleryScreen').hidden=!gallery;(gallery?$('galleryStage'):$('cameraStage')).prepend(document.querySelector('.viewer'));$('shootTab').setAttribute('aria-current',gallery?'false':'page');$('galleryTab').setAttribute('aria-current',gallery?'page':'false');if(gallery){if(clips.length)select(selected>=0?selected:clips.length-1);else $('empty').hidden=false;}else{selected=-1;if(stream?.active)resumeCamera();else{$('empty').hidden=false;camera();}}status(gallery?'컷을 선택해 문구를 바꾸거나 순서를 정리하세요.':'준비되면 촬영 버튼을 눌러주세요.');}
-function startNext(){pendingClip=null;for(const id of ['shootTab','galleryTab','settingsOpen','textEdit','editClip','collageToggle','durationOpen'])$(id).disabled=false;$('captureDock').hidden=false;$('reviewDock').hidden=true;$('textEdit').hidden=false;selected=-1;if(stream?.active)resumeCamera();else{$('empty').hidden=false;ctx.clearRect(0,0,540,960);}}
-$('settingsOpen').onclick=()=>openSettings();$('textEdit').onclick=()=>openSettings(true);$('editClip').onclick=()=>openSettings(true);$('settingsClose').onclick=()=>$('settingsSheet').close();$('settingsSheet').onclick=e=>{if(e.target===$('settingsSheet')){const r=e.target.getBoundingClientRect();if(e.clientY<r.top||e.clientX<r.left||e.clientX>r.right)e.target.close();}};
+function startNext(){pendingClip=null;for(const id of ['shootTab','galleryTab','textEdit','editClip','collageToggle','durationOpen'])$(id).disabled=false;$('captureDock').hidden=false;$('reviewDock').hidden=true;$('textEdit').hidden=false;selected=-1;if(stream?.active)resumeCamera();else{$('empty').hidden=false;ctx.clearRect(0,0,540,960);}}
+$('textEdit').onclick=()=>openSettings(true);$('editClip').onclick=()=>openSettings(true);$('settingsClose').onclick=()=>$('settingsSheet').close();$('settingsSheet').onclick=e=>{if(e.target===$('settingsSheet')){const r=e.target.getBoundingClientRect();if(e.clientY<r.top||e.clientX<r.left||e.clientX>r.right)e.target.close();}};
 $('shootTab').onclick=()=>showScreen('shoot');$('galleryTab').onclick=()=>showScreen('gallery');
 $('keep').onclick=async()=>{if(!pendingClip||busy)return;clips.push(pendingClip);await persist();renderList();startNext();status('담았어요! 바로 다음 순간을 찍어보세요.');};$('retake').onclick=()=>{startNext();status('다시 찍을 준비가 됐어요.');};
 
@@ -96,3 +113,42 @@ $('durationClose').onclick=()=>{if(!$('clipSeconds').reportValidity())return;if(
 $('durationSheet').addEventListener('close',()=>{$('duration').value=Math.min(600,Math.max(clipLengths.timelapse,Number($('duration').value)||30));updateDurationLabels();});
 for(const b of document.querySelectorAll('[data-zoom]'))b.onclick=()=>{if(b.disabled)return;$('zoom').value=b.dataset.zoom;changeZoom();};
 syncZoomButtons();syncCollageIcon();
+
+function reorderClipsByIds(items,ids){const map=new Map(items.map(c=>[c.id,c]));return ids.map(id=>map.get(id));}
+function bindClipDrag(item){
+ let drag=null;
+ item.addEventListener('pointerdown',e=>{
+  if(busy||e.button!==0||e.target.closest('.deleteClip')||(!item.classList.contains('selected')&&!e.target.closest('.dragHandle')))return;
+  if(clips.length<2)return;
+  const r=item.getBoundingClientRect();drag={id:e.pointerId,startY:e.clientY,y:e.clientY,offset:e.clientY-r.top,rect:r,ghost:null,raf:0,active:false};
+  item.setPointerCapture(e.pointerId);
+ });
+ const position=()=>{
+  if(!drag?.active)return;
+  const pane=$('galleryScreen'),bounds=pane.getBoundingClientRect();
+  if(drag.y<bounds.top+55)pane.scrollTop-=9;else if(drag.y>bounds.bottom-55)pane.scrollTop+=9;
+  drag.ghost.style.top=(drag.y-drag.offset)+'px';
+  const others=[...$('clips').children].filter(n=>n!==item&&n.classList.contains('clip'));
+  const next=others.find(n=>{const r=n.getBoundingClientRect();return drag.y<r.top+r.height/2;});
+  for(const n of others)n.classList.remove('dropBefore','dropAfter');drag.beforeId=next?.dataset.id||null;if(next)next.classList.add('dropBefore');else others.at(-1)?.classList.add('dropAfter');
+  drag.raf=requestAnimationFrame(position);
+ };
+ item.addEventListener('pointermove',e=>{
+  if(!drag||e.pointerId!==drag.id)return;drag.y=e.clientY;
+  if(!drag.active&&Math.abs(e.clientY-drag.startY)>6){
+   drag.active=true;drag.ghost=item.cloneNode(true);drag.ghost.classList.add('dragGhost');drag.ghost.setAttribute('aria-hidden','true');drag.ghost.style.cssText=`position:fixed;left:${drag.rect.left}px;top:${drag.rect.top}px;width:${drag.rect.width}px;z-index:1000;pointer-events:none;`;
+   document.body.append(drag.ghost);item.classList.add('dragOrigin');position();
+  }
+  if(drag.active)e.preventDefault();
+ });
+ const finish=(e,cancel=false)=>{
+  if(!drag||e.pointerId!==drag.id)return;
+  const d=drag;drag=null;cancelAnimationFrame(d.raf);d.ghost?.remove();item.classList.remove('dragOrigin');for(const n of $('clips').children)n.classList.remove('dropBefore','dropAfter');
+  if(d.active){
+   suppressClipClickUntil=performance.now()+400;
+   if(!cancel){const ids=clips.map(c=>c.id).filter(id=>id!==item.dataset.id);const at=d.beforeId?ids.indexOf(d.beforeId):ids.length;ids.splice(at<0?ids.length:at,0,item.dataset.id);clips=reorderClipsByIds(clips,ids);selected=clips.findIndex(c=>c.id===item.dataset.id);persist();select(selected);status('영상 순서를 바꿨어요.');}else renderList();
+  }
+  if(item.hasPointerCapture(e.pointerId))item.releasePointerCapture(e.pointerId);
+ };
+ item.addEventListener('pointerup',e=>finish(e));item.addEventListener('pointercancel',e=>finish(e,true));item.addEventListener('lostpointercapture',e=>{if(drag)finish(e,true);});
+}
