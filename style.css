@@ -22,3 +22,5 @@
 .clip.dropBefore{box-shadow:0 -3px 0 #222}.clip.dropAfter{box-shadow:0 3px 0 #222}
 
 .captionInputWrap{position:relative}.captionInputWrap #caption{padding-right:50px}.captionInputWrap #clearCaption{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:44px;height:44px;min-height:44px;padding:0;background:transparent;color:#888;font-size:25px;line-height:1;border-radius:12px}
+
+.galleryTitle{justify-content:flex-end;padding:0 0 12px;min-height:24px}#galleryScreen{padding-top:12px}.clip .modifyClip{display:grid;place-items:center;min-width:40px;min-height:44px;padding:8px;color:#555}.clip .modifyClip svg{width:19px;height:19px}.clip .edit{min-width:0;padding:6px;font-size:12px}.clip .dragHandle{min-width:36px}.clip .deleteClip{width:32px;min-width:32px}
