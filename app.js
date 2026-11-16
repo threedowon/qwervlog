@@ -194,13 +194,10 @@ function setSettingsSaving(on){
  $('editCaption').readOnly=on;$('editCollage').disabled=on;
  $('editTime').disabled=on||$('time').disabled;
 }
-$('settingsClose').addEventListener('pointerdown',()=>{$('editCaption').blur();$('editTime').blur();});
 $('settingsClose').onclick=async()=>{
  if(!settingsOriginal||settingsSaving)return;
  const session=settingsOriginal;
- // Finish the keyboard's current composition before reading the submitted value.
- settingsSaving=true;$('editCaption').blur();$('editTime').blur();await wait(0);
- if(session!==settingsOriginal){settingsSaving=false;return;}
+ // Read the live draft before closing the keyboard can move the tapped button.
  if(!$('editCaption').reportValidity()||(!$('editTime').disabled&&!$('editTime').reportValidity())){settingsSaving=false;return;}
  const values={caption:$('editCaption').value.replace(/[\r\n]+/g,' '),time:$('editTime').value,collage:$('editCollage').checked};
  setSettingsSaving(true);$('editSaveStatus').textContent='문구를 반영하고 있어요…';
@@ -226,7 +223,13 @@ $('settingsClose').onclick=async()=>{
  if(session.pending&&!settingsOriginal&&pendingClip?.id===session.clipId)void playPendingClip();
 };
 $('settingsCancel').onclick=()=>{if(settingsSaving)return;discardSettings();closeCaptionSheet();};
-$('settingsOverlay').onclick=e=>{if(!settingsSaving&&e.target===$('settingsOverlay')){discardSettings();closeCaptionSheet();}};
+let backdropPress=false;
+$('settingsOverlay').addEventListener('pointerdown',e=>{backdropPress=e.target===$('settingsOverlay');});
+$('settingsOverlay').addEventListener('pointercancel',()=>{backdropPress=false;});
+$('settingsOverlay').onclick=e=>{
+ const dismiss=backdropPress&&e.target===$('settingsOverlay');backdropPress=false;
+ if(!settingsSaving&&dismiss){discardSettings();closeCaptionSheet();}
+};
 $('settingsSheet').addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();if(!settingsSaving){discardSettings();closeCaptionSheet();}}});
 $('shootTab').onclick=()=>showScreen('shoot');$('galleryTab').onclick=()=>showScreen('gallery');
 $('keep').onclick=async()=>{if(!pendingClip||busy)return;pausePendingClip();clips.push(pendingClip);const saved=await persist();renderList();startNext();if(saved)status('담았어요! 바로 다음 순간을 찍어보세요.');};$('retake').onclick=()=>{startNext();status('다시 찍을 준비가 됐어요.');};
