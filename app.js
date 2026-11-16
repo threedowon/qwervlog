@@ -45,7 +45,7 @@ function renderList(){
   handle.onkeydown=e=>{if(!busy&&['ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();move(i,e.key==='ArrowUp'?-1:1);}};
   const del=document.createElement('button');del.className='deleteClip';del.textContent='×';del.disabled=busy;del.setAttribute('aria-label',`${i+1}번 컷 삭제`);del.onclick=()=>{if(performance.now()>suppressClipClickUntil)remove(i);};
   const modify=document.createElement('button');modify.className='modifyClip';modify.disabled=busy;modify.setAttribute('aria-label',`${i+1}번 컷 수정`);modify.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15z"/></svg>';
-  modify.onclick=()=>{if(busy||performance.now()<suppressClipClickUntil)return;selected=i;openSettings(true);void select(i);};
+  modify.onclick=()=>{if(busy||performance.now()<suppressClipClickUntil)return;selected=i;openSettings(true);};
   item.append(img,edit,handle,modify,del);root.append(item);bindClipDrag(item);
  });
  $('total').textContent=`${clips.length} CUTS · ${clips.reduce((s,c)=>s+c.seconds,0)}초`;
@@ -73,13 +73,22 @@ for(let index=0;index<clips.length;index++){let clip=clips[index],images=prepare
 if(recorder){await new Promise((res,rej)=>{recorder.onstop=res;recorder.onerror=()=>rej(Error('영상 저장 중 오류가 발생했어요.'));recorder.stop()});resultBlob=new Blob(chunks,{type:recorder.mimeType});if(resultURL)URL.revokeObjectURL(resultURL);resultURL=URL.createObjectURL(resultBlob);$('result').src=resultURL;$('download').href=resultURL;$('download').download=`after-hours-${new Date().toISOString().slice(0,10)}.${resultBlob.type.includes('mp4')?'mp4':'webm'}`;$('downloadArea').hidden=false;status(`완성했어요! ${clips.reduce((s,c)=>s+c.seconds,0)}초 · ${resultBlob.type.includes('mp4')?'MP4':'WebM'} · 아래에서 다운로드하거나 공유하세요.`)}else status('모든 컷을 재생했어요.')}catch(e){status(e.message);if(recorder?.state==='recording')recorder.stop()}finally{outputStream?.getTracks().forEach(t=>t.stop());lock(false)}}
 $('cameraStart').onclick=()=>{selected=-1;camera()};$('zoom').oninput=changeZoom;$('flip').onclick=()=>{facing=facing==='environment'?'user':'environment';camera()};$('normal').onclick=()=>setMode('normal');$('timelapse').onclick=()=>setMode('timelapse');$('record').onclick=record;$('cancel').onclick=()=>{cancelled=true};$('upload').onchange=e=>importVideo(e.target.files[0]);$('play').onclick=()=>sequence(false);$('export').onclick=()=>sequence(true);$('share').onclick=async()=>{try{let file=new File([resultBlob],$('download').download,{type:resultBlob.type});if(navigator.canShare?.({files:[file]}))await navigator.share({files:[file]});else $('download').click()}catch(e){if(e.name!=='AbortError')status('공유하지 못했어요. 다운로드 버튼으로 저장해주세요.')}};document.addEventListener('visibilitychange',()=>{if(document.hidden&&busy)cancelled=true});window.addEventListener('pagehide',()=>stream?.getTracks().forEach(t=>t.stop()));setMode('normal');syncTimeControl();initDB().finally(()=>{if(!$('shootScreen').hidden&&!busy&&!pendingClip&&!stream?.active)camera();});
 
+// A regular overlay avoids native dialog focus changes during iOS keyboard composition.
+function openCaptionSheet(){
+ $('settingsOverlay').hidden=false;
+ document.querySelector('main').inert=true;document.querySelector('nav').inert=true;
+}
+function closeCaptionSheet(){
+ $('editCaption').blur();$('editTime').blur();$('settingsOverlay').hidden=true;
+ document.querySelector('main').inert=false;document.querySelector('nav').inert=false;
+}
 function openSettings(textOnly=false){
- if(busy||pendingClip||$('settingsSheet').open)return;
+ if(busy||pendingClip||!$('settingsOverlay').hidden)return;
  const clip=!$('galleryScreen').hidden&&selected>=0?clips[selected]:null;
  settingsOriginal={clipId:clip?.id??null,caption:clip?.caption??$('caption').value,time:clip?.time??$('time').value,collage:clip?.collage??$('collage').checked};
  $('editCaption').disabled=false;$('editCaption').readOnly=false;$('editCaption').value=settingsOriginal.caption;$('editTime').value=settingsOriginal.time;$('editCollage').checked=settingsOriginal.collage;
  syncTimeControl();$('editTime').disabled=$('time').disabled;
- $('settingsSheet').classList.toggle('captionOnly',textOnly&&$('galleryScreen').hidden);$('settingsSheet').showModal();if(textOnly){$('editCaption').focus({preventScroll:true});}
+ $('settingsSheet').classList.toggle('captionOnly',textOnly&&$('galleryScreen').hidden);openCaptionSheet();if(textOnly){$('editCaption').focus({preventScroll:true});}
 }
 function showScreen(screen){if(busy||pendingClip)return;const gallery=screen==='gallery';stopLive();$('shootScreen').hidden=gallery;$('galleryScreen').hidden=!gallery;(gallery?$('galleryStage'):$('cameraStage')).prepend(document.querySelector('.viewer'));$('shootTab').setAttribute('aria-current',gallery?'false':'page');$('galleryTab').setAttribute('aria-current',gallery?'page':'false');if(gallery){if(clips.length)select(selected>=0?selected:clips.length-1);else $('empty').hidden=false;}else{selected=-1;if(stream?.active)resumeCamera();else{$('empty').hidden=false;camera();}}status(gallery?'컷을 선택해 문구를 바꾸거나 순서를 정리하세요.':'준비되면 촬영 버튼을 눌러주세요.');}
 function startNext(){pendingClip=null;for(const id of ['shootTab','galleryTab','textEdit','collageToggle','durationOpen'])$(id).disabled=false;$('captureDock').hidden=false;$('reviewDock').hidden=true;$('textEdit').hidden=false;selected=-1;if(stream?.active)resumeCamera();else{$('empty').hidden=false;ctx.clearRect(0,0,540,960);}}
@@ -93,18 +102,17 @@ $('settingsClose').onclick=async()=>{
  if(!settingsOriginal||!$('editCaption').reportValidity()||(!$('editTime').disabled&&!$('editTime').reportValidity()))return;
  const session=settingsOriginal,values={caption:$('editCaption').value.replace(/[\r\n]+/g,' '),time:$('editTime').value,collage:$('editCollage').checked};
  const index=session.clipId===null?-1:clips.findIndex(c=>c.id===session.clipId);
- if(session.clipId!==null&&index<0){discardSettings();$('settingsSheet').close();return;}
+ if(session.clipId!==null&&index<0){discardSettings();closeCaptionSheet();return;}
  if(index>=0){Object.assign(clips[index],values);}else{
   // Capture defaults belong to the camera, never to a selected gallery clip.
   $('caption').value=values.caption;$('collage').checked=values.collage;
  }
- settingsOriginal=null;syncCollageIcon();$('settingsSheet').close();
+ settingsOriginal=null;syncCollageIcon();closeCaptionSheet();
  if(index>=0){await select(index);await persist();}
 };
-$('settingsCancel').onclick=()=>{discardSettings();$('settingsSheet').close();};
-$('settingsSheet').addEventListener('cancel',()=>discardSettings());
-$('settingsSheet').addEventListener('close',()=>{if(!$('settingsSheet').open)discardSettings();});
-$('settingsSheet').onclick=e=>{if(e.target===$('settingsSheet')){const r=e.target.getBoundingClientRect();if(e.clientY<r.top||e.clientY>r.bottom||e.clientX<r.left||e.clientX>r.right){discardSettings();e.target.close();}}};
+$('settingsCancel').onclick=()=>{discardSettings();closeCaptionSheet();};
+$('settingsOverlay').onclick=e=>{if(e.target===$('settingsOverlay')){discardSettings();closeCaptionSheet();}};
+$('settingsSheet').addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();discardSettings();closeCaptionSheet();}});
 $('shootTab').onclick=()=>showScreen('shoot');$('galleryTab').onclick=()=>showScreen('gallery');
 $('keep').onclick=async()=>{if(!pendingClip||busy)return;clips.push(pendingClip);await persist();renderList();startNext();status('담았어요! 바로 다음 순간을 찍어보세요.');};$('retake').onclick=()=>{startNext();status('다시 찍을 준비가 됐어요.');};
 
