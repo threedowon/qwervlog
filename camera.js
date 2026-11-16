@@ -9,7 +9,7 @@ let hardwareBase=1, digitalZoom=1, hardwareZoom=false, cameraOpening=false, zoom
 function paintCamera(c,source,w,h){
   const sw=source.videoWidth,sh=source.videoHeight;if(!sw||!sh)return;
   c.save();c.fillStyle='#141714';c.fillRect(0,0,w,h);
-  const r=cameraRect(sw,sh,w,h,'contain',digitalZoom);
+  const r=cameraRect(sw,sh,w,h,'cover',digitalZoom);
   c.drawImage(source,...r);c.restore();
 }
 function resumeCamera(){if(stream?.active&&!busy){$('empty').hidden=true;stopLive();live=true;loop()}}
