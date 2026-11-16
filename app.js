@@ -33,8 +33,18 @@ function saveDurations(){
 }
 function openDuration(){if(busy||pendingClip)return;durationOriginal={capture:$('duration').value};$('clipSeconds').value=clipLengths[mode];$('captureDurationField').hidden=mode==='normal';updateDurationLabels();$('durationSheet').showModal();}
 
-async function initDB(){try{db=await new Promise((res,rej)=>{let r=indexedDB.open('after-hours-v1',1);r.onupgradeneeded=()=>r.result.createObjectStore('story');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});let saved=await new Promise((res,rej)=>{let r=db.transaction('story').objectStore('story').get('clips');r.onsuccess=()=>res(r.result||[]);r.onerror=()=>rej(r.error)});clips=saved;renderList();$('empty').hidden=false}catch(e){status('브라우저 보관함을 사용할 수 없어요. 촬영 후 파일로 저장해 주세요.')}}
-async function persist(){$('downloadArea').hidden=true;if(!db){status('현재 세션에만 보관 중이에요. 파일로 저장해 주세요.');return false}try{await new Promise((res,rej)=>{let tx=db.transaction('story','readwrite');tx.objectStore('story').put(clips,'clips');tx.oncomplete=res;tx.onerror=()=>rej(tx.error);tx.onabort=()=>rej(tx.error)});return true}catch(e){status('브라우저 저장 공간이 부족해요. 현재 영상을 파일로 저장해 주세요.');return false}}
+async function initDB(){try{db=await new Promise((res,rej)=>{let r=indexedDB.open('after-hours-v1',1);r.onupgradeneeded=()=>r.result.createObjectStore('story');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});let saved=await new Promise((res,rej)=>{let r=db.transaction('story').objectStore('story').get('clips');r.onsuccess=()=>res(r.result||[]);r.onerror=()=>rej(r.error)});clips=saved;await Promise.all(clips.map(async clip=>{const edit=await new Promise((res,rej)=>{const r=db.transaction('story').objectStore('story').get('edit:'+clip.id);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});if(edit)Object.assign(clip,{caption:edit.caption,time:edit.time,collage:edit.collage});}));renderList();$('empty').hidden=false}catch(e){status('브라우저 보관함을 사용할 수 없어요. 촬영 후 파일로 저장해 주세요.')}}
+async function persist(){$('downloadArea').hidden=true;if(!db){status('현재 세션에만 보관 중이에요. 파일로 저장해 주세요.');return false}try{await new Promise((res,rej)=>{let tx=db.transaction('story','readwrite');tx.objectStore('story').put(clips,'clips');tx.oncomplete=res;tx.onerror=()=>rej(tx.error);tx.onabort=()=>rej(tx.error)});return true}catch(e){status(storageErrorMessage(e));return false}}
+function storageErrorMessage(error){
+ return error?.name==='QuotaExceededError'?'브라우저 저장 한도를 초과했어요. 새로고침 전에 영상을 파일로 저장해 주세요.':`기기 저장에 실패했어요 (${error?.name||'저장소 연결 오류'}). 새로고침 전에 영상을 파일로 저장해 주세요.`;
+}
+async function persistClipEdit(clip){
+ $('downloadArea').hidden=true;
+ if(!db)return false;
+ const edit={caption:clip.caption,time:clip.time,collage:clip.collage};
+ try{await new Promise((res,rej)=>{const tx=db.transaction('story','readwrite');tx.objectStore('story').put(edit,'edit:'+clip.id);tx.oncomplete=res;tx.onerror=()=>rej(tx.error);tx.onabort=()=>rej(tx.error);});return true;}
+ catch(e){return false;}
+}
 function renderList(){
  const root=$('clips');root.replaceChildren();$('cutCount').textContent=clips.length;
  if(!clips.length){const p=document.createElement('p');p.className='hint';p.textContent='아직 담은 순간이 없어요.';root.append(p);}
@@ -202,11 +212,11 @@ $('settingsClose').onclick=async()=>{
    settingsOriginal=null;closeCaptionSheet();status('문구를 반영했어요. 담기를 누르면 보관돼요.');
   }else if(session.clipId!==null){
    const index=clips.findIndex(c=>c.id===session.clipId);if(index<0)throw Error('수정할 컷을 다시 선택해 주세요.');
-   const previous={caption:clips[index].caption,time:clips[index].time,collage:clips[index].collage};Object.assign(clips[index],values);
-   // Save first: image decoding must never prevent a text edit from being persisted.
-   if(!await persist()){Object.assign(clips[index],previous);throw Error('기기에 저장하지 못했어요. 완료를 다시 눌러주세요.');}
+   Object.assign(clips[index],values);
+   // Editing text never serializes or rewrites video frames.
+   const saved=await persistClipEdit(clips[index]);
    try{await select(index);}catch(e){status('문구는 저장됐어요. 컷을 다시 선택하면 확인할 수 있어요.');}
-   settingsOriginal=null;closeCaptionSheet();status('문구를 저장했어요.');
+   settingsOriginal=null;closeCaptionSheet();status(saved?'문구를 저장했어요.':'문구는 현재 화면에 반영됐지만 기기에 저장하지 못했어요. 새로고침 전에 영상 저장을 눌러주세요.');
   }else{
    $('caption').value=values.caption;$('collage').checked=values.collage;
    settingsOriginal=null;syncCollageIcon();closeCaptionSheet();status('촬영 문구를 반영했어요.');
@@ -219,7 +229,7 @@ $('settingsCancel').onclick=()=>{if(settingsSaving)return;discardSettings();clos
 $('settingsOverlay').onclick=e=>{if(!settingsSaving&&e.target===$('settingsOverlay')){discardSettings();closeCaptionSheet();}};
 $('settingsSheet').addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();if(!settingsSaving){discardSettings();closeCaptionSheet();}}});
 $('shootTab').onclick=()=>showScreen('shoot');$('galleryTab').onclick=()=>showScreen('gallery');
-$('keep').onclick=async()=>{if(!pendingClip||busy)return;pausePendingClip();clips.push(pendingClip);await persist();renderList();startNext();status('담았어요! 바로 다음 순간을 찍어보세요.');};$('retake').onclick=()=>{startNext();status('다시 찍을 준비가 됐어요.');};
+$('keep').onclick=async()=>{if(!pendingClip||busy)return;pausePendingClip();clips.push(pendingClip);const saved=await persist();renderList();startNext();if(saved)status('담았어요! 바로 다음 순간을 찍어보세요.');};$('retake').onclick=()=>{startNext();status('다시 찍을 준비가 됐어요.');};
 
 // Conservative recovery for older clips that did not store camera-content bounds.
 const paddingCache=new WeakMap();
