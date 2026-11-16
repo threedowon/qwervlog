@@ -11,7 +11,7 @@ const status=t=>$('status').textContent=t;
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 const image=src=>new Promise((resolve,reject)=>{let i=new Image();i.onload=()=>resolve(i);i.onerror=reject;i.src=src});
 function cover(c,source,x,y,w,h,crop){const sw=source.videoWidth||source.naturalWidth||source.width,sh=source.videoHeight||source.naturalHeight||source.height;if(!sw||!sh)return;const bounded=crop?{...crop,bounds:crop.bounds||detectPadding(source)}:undefined;c.drawImage(source,...cropRect(sw,sh,w,h,bounded),x,y,w,h)}
-function draw(source,photos=[],caption=$('caption').value,time=$('time').value,collage=$('collage').checked,layout=layoutFor('preview'),backgroundBounds){ctx.fillStyle='#232b23';ctx.fillRect(0,0,540,960);if(source){if(source===$('camera'))paintCamera(ctx,source,540,960);else cover(ctx,source,0,0,540,960,{zoom:1,x:.5,y:.5,bounds:backgroundBounds||detectPadding(source)});}if(collage&&photos.length===3){layout.forEach((r,i)=>cover(ctx,photos[i],...r))}ctx.save();ctx.fillStyle='white';ctx.shadowColor='#0008';ctx.shadowBlur=5;ctx.textAlign='center';ctx.font='400 25px -apple-system,Arial,sans-serif';ctx.fillText(time||'',270,441);drawCaption(ctx,caption,270,465);ctx.restore()}
+function draw(source,photos=[],caption=$('caption').value,time=$('time').value,collage=$('collage').checked,layout=layoutFor('preview'),backgroundBounds){ctx.fillStyle='#232b23';ctx.fillRect(0,0,540,960);if(source){if(source===$('camera'))paintCamera(ctx,source,540,960);else cover(ctx,source,0,0,540,960,{zoom:1,x:.5,y:.5,bounds:backgroundBounds||detectPadding(source)});}if(collage&&photos.length){layout.forEach((r,i)=>{if(photos[i])cover(ctx,photos[i],...r)})}ctx.save();ctx.fillStyle='white';ctx.shadowColor='#0008';ctx.shadowBlur=5;ctx.textAlign='center';ctx.font='400 25px -apple-system,Arial,sans-serif';ctx.fillText(time||'',270,441);drawCaption(ctx,caption,270,465);ctx.restore()}
 function stopLive(){live=false;cancelAnimationFrame(raf)}
 function loop(){if(!live)return;draw($('camera'),[],settingsOriginal?.caption??$('caption').value,liveClock());raf=requestAnimationFrame(loop)}
 async function camera(deviceId){if(busy||cameraOpening)return;cameraOpening=true;$('record').disabled=true;status('카메라를 연결하고 있어요. 권한 요청이 나오면 허용해 주세요.');try{if(!navigator.mediaDevices?.getUserMedia)throw Error('Safari에서 다시 열거나 영상을 가져오세요.');stopLive();stream?.getTracks().forEach(t=>t.stop());const video={resizeMode:{ideal:'none'}};if(typeof deviceId==='string'&&deviceId)video.deviceId={exact:deviceId};else video.facingMode={ideal:facing};stream=await navigator.mediaDevices.getUserMedia({video,audio:false});$('camera').srcObject=stream;await $('camera').play();await configureCamera();if($('shootScreen').hidden||busy||pendingClip){stream.getTracks().forEach(t=>t.stop());stream=null;return}selected=-1;$('empty').hidden=true;live=true;loop();status('구도를 맞춘 뒤 아래 녹화 버튼을 누르세요. 미리보기는 저장되지 않아요.')}catch(e){stream?.getTracks().forEach(t=>t.stop());stream=null;status(e.name==='NotAllowedError'?'카메라 권한을 허용한 뒤 가운데 카메라 아이콘을 눌러주세요.':'자동 미리보기를 시작하지 못했어요. 가운데 카메라 아이콘을 눌러주세요.')}finally{cameraOpening=false;$('record').disabled=busy;syncZoomButtons()}}
@@ -59,7 +59,7 @@ async function remove(i){clips.splice(i,1);selected=Math.min(i,clips.length-1);r
 function snapshot(source,boundsList){let c=document.createElement('canvas');c.width=540;c.height=960;if(source===$('camera'))paintCamera(c.getContext('2d'),source,540,960);else cover(c.getContext('2d'),source,0,0,540,960);if(boundsList){const r=source===$('camera')?cameraRect(source.videoWidth,source.videoHeight,540,960,'cover',digitalZoom):[0,0,540,960];boundsList.push(visibleBounds(r,540,960));}return c.toDataURL('image/jpeg',.8)}
 
 async function add(frames,m,seconds,timing=beginTiming(),sourceBounds=null){
- const id=crypto.randomUUID();pendingClip={id,layout:layoutFor(id),frames,sourceBounds:sourceBounds||frames.map(()=>[0,0,540,960]),mode:m,seconds,caption:$('caption').value,...timing,collage:$('collage').checked};
+ const id=crypto.randomUUID();pendingClip={id,layoutVersion:2,layout:layoutFor(id),frames,sourceBounds:sourceBounds||frames.map(()=>[0,0,540,960]),mode:m,seconds,caption:$('caption').value,...timing,collage:$('collage').checked};
  stopLive();$('empty').hidden=true;
  pendingClip.photoIndices=photoIndicesFor(pendingClip);pendingClip.crops=clipCrops(pendingClip);
  const photos=await Promise.all(collageFrames(pendingClip).map(image));
@@ -137,7 +137,7 @@ function drawCaption(c,text,x,y){
 }
 
 function syncCollageIcon(){$('collageToggle').setAttribute('aria-pressed',String($('collage').checked));}
-$('collageToggle').onclick=()=>{if(busy||pendingClip)return;$('collage').checked=!$('collage').checked;syncCollageIcon();status($('collage').checked?'콜라주 켜짐 · 촬영 후 사진 3장을 추가해요.':'콜라주 꺼짐');};
+$('collageToggle').onclick=()=>{if(busy||pendingClip)return;$('collage').checked=!$('collage').checked;syncCollageIcon();status($('collage').checked?'콜라주 켜짐 · 촬영 후 작은 사진 2~3장을 추가해요.':'콜라주 꺼짐');};
 
 function previewDuration(){
  const n=Number($('clipSeconds').value);
