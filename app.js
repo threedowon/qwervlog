@@ -79,7 +79,7 @@ function openSettings(textOnly=false){
  settingsOriginal={clipId:clip?.id??null,caption:clip?.caption??$('caption').value,time:clip?.time??$('time').value,collage:clip?.collage??$('collage').checked};
  $('editCaption').disabled=false;$('editCaption').readOnly=false;$('editCaption').value=settingsOriginal.caption;$('editTime').value=settingsOriginal.time;$('editCollage').checked=settingsOriginal.collage;
  syncTimeControl();$('editTime').disabled=$('time').disabled;
- $('settingsSheet').classList.toggle('captionOnly',textOnly&&$('galleryScreen').hidden);$('settingsSheet').showModal();if(textOnly){$('editCaption').focus({preventScroll:true});$('editCaption').setSelectionRange($('editCaption').value.length,$('editCaption').value.length);}
+ $('settingsSheet').classList.toggle('captionOnly',textOnly&&$('galleryScreen').hidden);$('settingsSheet').showModal();if(textOnly){$('editCaption').focus({preventScroll:true});}
 }
 function showScreen(screen){if(busy||pendingClip)return;const gallery=screen==='gallery';stopLive();$('shootScreen').hidden=gallery;$('galleryScreen').hidden=!gallery;(gallery?$('galleryStage'):$('cameraStage')).prepend(document.querySelector('.viewer'));$('shootTab').setAttribute('aria-current',gallery?'false':'page');$('galleryTab').setAttribute('aria-current',gallery?'page':'false');if(gallery){if(clips.length)select(selected>=0?selected:clips.length-1);else $('empty').hidden=false;}else{selected=-1;if(stream?.active)resumeCamera();else{$('empty').hidden=false;camera();}}status(gallery?'컷을 선택해 문구를 바꾸거나 순서를 정리하세요.':'준비되면 촬영 버튼을 눌러주세요.');}
 function startNext(){pendingClip=null;for(const id of ['shootTab','galleryTab','textEdit','collageToggle','durationOpen'])$(id).disabled=false;$('captureDock').hidden=false;$('reviewDock').hidden=true;$('textEdit').hidden=false;selected=-1;if(stream?.active)resumeCamera();else{$('empty').hidden=false;ctx.clearRect(0,0,540,960);}}
@@ -91,7 +91,7 @@ function discardSettings(){
 $('textEdit').onclick=()=>openSettings(true);
 $('settingsClose').onclick=async()=>{
  if(!settingsOriginal||!$('editCaption').reportValidity()||(!$('editTime').disabled&&!$('editTime').reportValidity()))return;
- const session=settingsOriginal,values={caption:$('editCaption').value,time:$('editTime').value,collage:$('editCollage').checked};
+ const session=settingsOriginal,values={caption:$('editCaption').value.replace(/[\r\n]+/g,' '),time:$('editTime').value,collage:$('editCollage').checked};
  const index=session.clipId===null?-1:clips.findIndex(c=>c.id===session.clipId);
  if(session.clipId!==null&&index<0){discardSettings();$('settingsSheet').close();return;}
  if(index>=0){Object.assign(clips[index],values);}else{
