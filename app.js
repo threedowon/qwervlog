@@ -207,3 +207,10 @@ function bindClipDrag(item){
 }
 
 $('clearCaption').onclick=()=>{if(busy)return;$('editCaption').value='';$('editCaption').focus();};
+
+$('alternateCaption').onclick=()=>{
+ if(!settingsOriginal||busy)return;
+ $('editCaption').blur();
+ const text=window.prompt('영상 가운데 문구를 입력해 주세요. 마지막에 완료를 눌러야 저장돼요.',$('editCaption').value);
+ if(text!==null&&settingsOriginal)$('editCaption').value=text;
+};
