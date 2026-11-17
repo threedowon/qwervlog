@@ -17,7 +17,7 @@ async function configureCamera(){
   const track=stream.getVideoTracks()[0],caps=track.getCapabilities?.()||{},slider=$('zoom');
   digitalZoom=1;hardwareZoom=false;hardwareBase=1;slider.min=1;slider.max=3;slider.step=.01;slider.value=1;
   if(caps.zoom&&Number.isFinite(caps.zoom.min)&&Number.isFinite(caps.zoom.max)&&caps.zoom.max>caps.zoom.min){
-    try{hardwareBase=Math.max(caps.zoom.min,Math.min(caps.zoom.max,1));await track.applyConstraints({advanced:[{zoom:hardwareBase}]});hardwareZoom=true;slider.min=caps.zoom.min/hardwareBase;slider.max=Math.min(caps.zoom.max/hardwareBase,6);hardwareStep=caps.zoom.step||.01;hardwareMin=caps.zoom.min;slider.step=.01;slider.value=(track.getSettings().zoom??hardwareBase)/hardwareBase;}catch(e){/* Retain digital framing when hardware control is unavailable. */}
+    try{hardwareBase=caps.zoom.min>0?caps.zoom.min:1;await track.applyConstraints({advanced:[{zoom:hardwareBase}]});hardwareZoom=true;slider.min=caps.zoom.min/hardwareBase;slider.max=Math.min(caps.zoom.max/hardwareBase,6);hardwareStep=caps.zoom.step||.01;hardwareMin=caps.zoom.min;slider.step=.01;slider.value=(track.getSettings().zoom??hardwareBase)/hardwareBase;}catch(e){/* Retain digital framing when hardware control is unavailable. */}
   }
   $('zoomValue').textContent=Number(slider.value).toFixed(1)+'×';syncZoomButtons();
 
@@ -50,4 +50,25 @@ async function changeZoom(){
    catch(e){if(requestedZoom===null){$('zoom').value=(track.getSettings().zoom||hardwareBase)/hardwareBase;$('zoomValue').textContent=Number($('zoom').value).toFixed(1)+'×';syncZoomButtons();status('이 배율은 카메라에서 적용되지 않았어요.');}}
   }
  }finally{zoomChanging=false;$('record').disabled=busy||cameraOpening;$('flip').disabled=busy;if(!live)resumeCamera();}
+}
+
+// Prefer an explicitly named physical wide camera; never infer lens from device order.
+function standardRearCamera(devices){
+ const cameras=devices.filter(d=>d.kind==='videoinput');
+ const rear=/back|rear|environment|후면|뒷면/i,other=/ultra|telephoto|tele\b|dual|triple|울트라|초광각|망원|듀얼|트리플/i;
+ return cameras.find(d=>rear.test(d.label)&&!other.test(d.label)&&/wide|광각/i.test(d.label))
+  ||cameras.find(d=>/^(back camera|rear camera|후면 카메라|후면 카메라\s*1)$/i.test(d.label.trim()))||null;
+}
+async function acquireCamera(video,explicitDevice){
+ let acquired=await navigator.mediaDevices.getUserMedia({video,audio:false});
+ if(facing!=='environment'||explicitDevice)return acquired;
+ try{
+  const chosen=standardRearCamera(await navigator.mediaDevices.enumerateDevices());
+  if(chosen&&chosen.deviceId!==acquired.getVideoTracks()[0].getSettings().deviceId){
+   acquired.getTracks().forEach(t=>t.stop());
+   try{acquired=await navigator.mediaDevices.getUserMedia({video:{...video,facingMode:undefined,deviceId:{exact:chosen.deviceId}},audio:false});}
+   catch(e){acquired=await navigator.mediaDevices.getUserMedia({video,audio:false});}
+  }
+ }catch(e){if(!acquired.active)throw e;}
+ return acquired;
 }
