@@ -12,6 +12,13 @@ let clips=[],selected=-1,stream=null,facing='environment',mode='normal',busy=fal
 $('time').value=localClock(new Date());
 const status=t=>$('status').textContent=t;
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
+// Start loading the caption face early; never export a fallback font.
+let captionFontReady=document.fonts.load('400 21px "MaruBuri"','오늘').then(faces=>faces.length>0,()=>false);
+async function ensureCaptionFont(){
+ if(await captionFontReady)return;
+ captionFontReady=document.fonts.load('400 21px "MaruBuri"','오늘').then(faces=>faces.length>0,()=>false);
+ if(!await captionFontReady)throw Error('자막 폰트를 불러오지 못했어요. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.');
+}
 const image=src=>new Promise((resolve,reject)=>{let i=new Image();i.onload=()=>resolve(i);i.onerror=reject;i.src=src});
 function cover(c,source,x,y,w,h,crop){const sw=source.videoWidth||source.naturalWidth||source.width,sh=source.videoHeight||source.naturalHeight||source.height;if(!sw||!sh)return;const bounded=crop?{...crop,bounds:crop.bounds||detectPadding(source)}:undefined;c.drawImage(source,...cropRect(sw,sh,w,h,bounded),x,y,w,h)}
 function draw(source,photos=[],caption=$('caption').value,time=$('time').value,collage=$('collage').checked,layout=layoutFor('preview'),backgroundBounds){ctx.save();ctx.scale(canvas.width/540,canvas.height/960);ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.fillStyle='#232b23';ctx.fillRect(0,0,540,960);if(source){if(source===$('camera'))paintCamera(ctx,source,540,960);else cover(ctx,source,0,0,540,960,{zoom:1,x:.5,y:.5,bounds:backgroundBounds||detectPadding(source)});}if(collage&&photos.length){layout.forEach((r,i)=>{if(photos[i])cover(ctx,photos[i],...r)})}ctx.save();ctx.fillStyle='white';ctx.strokeStyle='#000';ctx.lineWidth=1.5;ctx.lineJoin='round';ctx.miterLimit=2;ctx.shadowBlur=0;ctx.textAlign='center';ctx.textBaseline='middle';const clock=videoClock(time),hasCaption=Boolean(caption?.trim());ctx.font='500 22px -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", Arial, sans-serif';if(clock){const y=hasCaption?466:480;ctx.strokeText(clock,270,y);ctx.fillText(clock,270,y);}if(hasCaption)drawCaption(ctx,caption,270,clock?494:480);ctx.restore();ctx.restore()}
@@ -65,7 +72,7 @@ function renderList(){
  for(const id of ['play','export'])$(id).disabled=busy||!clips.length;
 }
 
-async function select(i){const token=++selectionRenderToken;stopLive();selected=i;let clip=clips[i];if(!clip)return;$('empty').hidden=true;syncTimeControl();let imgs=await Promise.all(collageFrames(clip).map(image));if(token!==selectionRenderToken||clips[selected]?.id!==clip.id||live||$('galleryScreen').hidden)return;draw(imgs[1],imgs,clip.caption,clip.time,clip.collage,clipLayout(clip),clip.sourceBounds?.[photoIndicesFor(clip)[1]]);renderList()}
+async function select(i){const token=++selectionRenderToken;await captionFontReady;stopLive();selected=i;let clip=clips[i];if(!clip)return;$('empty').hidden=true;syncTimeControl();let imgs=await Promise.all(collageFrames(clip).map(image));if(token!==selectionRenderToken||clips[selected]?.id!==clip.id||live||$('galleryScreen').hidden)return;draw(imgs[1],imgs,clip.caption,clip.time,clip.collage,clipLayout(clip),clip.sourceBounds?.[photoIndicesFor(clip)[1]]);renderList()}
 async function move(i,delta){let j=i+delta;if(j<0||j>=clips.length)return;[clips[i],clips[j]]=[clips[j],clips[i]];await select(j);persist()}
 async function remove(i){clips.splice(i,1);selected=Math.min(i,clips.length-1);renderList();persist();if(selected>=0)select(selected);else{$('empty').hidden=false;ctx.clearRect(0,0,canvas.width,canvas.height)}}
 
@@ -109,6 +116,7 @@ $('reviewPlay').onclick=()=>void playPendingClip();
 document.addEventListener('visibilitychange',()=>{if(document.hidden)pausePendingClip();});
 async function renderPendingClip(){
  const clip=pendingClip;if(!clip)return;
+ await captionFontReady;
  const photos=await Promise.all(collageFrames(clip).map(image));if(pendingClip!==clip)return;
  draw(photos[1],photos,clip.caption,clip.time,clip.collage,clipLayout(clip),clip.sourceBounds?.[photoIndicesFor(clip)[1]]);
 }
@@ -162,6 +170,7 @@ async function record(){
 async function importVideo(file){if(!file)return;if(file.size>300*1024*1024){status('300MB 이하의 영상을 선택해 주세요.');return}cancelled=false;lock(true);stopLive();const recovered=await readBackupTiming(file);const timing=recovered?.timing||unknownCaptureTiming();let url=URL.createObjectURL(file),v=document.createElement('video');v.muted=true;v.playsInline=true;v.preload='auto';try{await new Promise((res,rej)=>{v.onloadedmetadata=res;v.onerror=()=>rej(Error('영상을 읽지 못했어요. 다른 파일을 선택해주세요.'));v.src=url});let d=v.duration;if(!Number.isFinite(d)||d<=0)throw Error('이 영상의 길이를 확인할 수 없어요.');const own=recovered?.own,importMode=own?(own.mode==='timelapse'?'timelapse':'normal'):mode,seconds=own?Math.max(1,Math.min(30,Number(own.seconds)||d)):mode==='normal'?Math.min(30,d):clipLengths[mode],count=Math.round(seconds*VIDEO_FPS),span=own?d:mode==='normal'?Math.min(seconds,d):d,frames=[];for(let i=0;i<count;i++){if(cancelled)throw Error('가져오기를 취소했어요.');await new Promise((res,rej)=>{let timer=setTimeout(()=>rej(Error('영상 읽기 시간이 초과됐어요.')),10000);v.onseeked=()=>{clearTimeout(timer);res()};v.currentTime=Math.min(Math.max(.001,i*span/count),Math.max(.001,d-.03))});frames.push(snapshot(v));status(`영상 준비 중 · ${Math.round((i+1)/count*100)}%`)}await add(frames,importMode,seconds,timing)}catch(e){status(e.message)}finally{v.removeAttribute('src');v.load();URL.revokeObjectURL(url);$('upload').value='';lock(false)}}
 // Decode only a small moving window, not every full-HD frame in every clip.
 async function prepareClip(clip){
+ if(clip.caption?.trim())await ensureCaptionFont();
  const cache=new Map();
  const get=i=>{if(!cache.has(i))cache.set(i,image(clip.frames[i]));return cache.get(i);};
  const photos=await Promise.all(collageFrames(clip).map(image));
@@ -289,7 +298,7 @@ function detectPadding(source){
 function captionGlyphs(text){return typeof Intl.Segmenter==='function'?[...new Intl.Segmenter('ko',{granularity:'grapheme'}).segment(text)].map(x=>x.segment):Array.from(text);}
 function drawCaption(c,text,x,y){
  const glyphs=captionGlyphs(text),spacing=.8;let size=21,widths,total;
- do{c.font=`400 ${size}px -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", Arial, sans-serif`;widths=glyphs.map(g=>c.measureText(g).width);total=widths.reduce((a,b)=>a+b,0)+Math.max(0,glyphs.length-1)*spacing;if(total<=490||size<=10)break;size--;}while(true);
+ do{c.font=`400 ${size}px "MaruBuri", "Apple SD Gothic Neo", serif`;widths=glyphs.map(g=>c.measureText(g).width);total=widths.reduce((a,b)=>a+b,0)+Math.max(0,glyphs.length-1)*spacing;if(total<=490||size<=10)break;size--;}while(true);
  c.textAlign='left';for(const method of ['strokeText','fillText']){let left=x-total/2;glyphs.forEach((g,i)=>{c[method](g,left,y);left+=widths[i]+spacing;});}
 }
 
