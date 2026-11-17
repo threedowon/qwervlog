@@ -4,7 +4,8 @@ function cameraRect(sw,sh,w,h,fit,zoom) {
   const dw=sw*scale,dh=sh*scale;
   return [(w-dw)/2,(h-dh)/2,dw,dh];
 }
-let hardwareStep=.01, hardwareMin=1, requestedZoom=null;
+let hardwareStep=.01, hardwareMin=1, hardwareMax=6, requestedZoom=null;
+let rearWide=null,rearUltra=null,lensScale=1;
 let hardwareBase=1, digitalZoom=1, hardwareZoom=false, cameraOpening=false, zoomChanging=false;
 function paintCamera(c,source,w,h){
   const sw=source.videoWidth,sh=source.videoHeight;if(!sw||!sh)return;
@@ -15,10 +16,13 @@ function paintCamera(c,source,w,h){
 function resumeCamera(){if(stream?.active&&!busy){$('empty').hidden=true;stopLive();live=true;loop()}}
 async function configureCamera(){
   const track=stream.getVideoTracks()[0],caps=track.getCapabilities?.()||{},slider=$('zoom');
-  digitalZoom=1;hardwareZoom=false;hardwareBase=1;slider.min=1;slider.max=3;slider.step=.01;slider.value=1;
+  lensScale=facing==='environment'&&rearUltra&&rearUltra.deviceId===track.getSettings().deviceId?.toString()?0.5:1;
+  digitalZoom=1;hardwareZoom=false;hardwareBase=1;slider.min=lensScale;slider.max=3;slider.step=.01;slider.value=lensScale;
   if(caps.zoom&&Number.isFinite(caps.zoom.min)&&Number.isFinite(caps.zoom.max)&&caps.zoom.max>caps.zoom.min){
-    try{hardwareBase=caps.zoom.min>0?caps.zoom.min:1;await track.applyConstraints({advanced:[{zoom:hardwareBase}]});hardwareZoom=true;slider.min=caps.zoom.min/hardwareBase;slider.max=Math.min(caps.zoom.max/hardwareBase,6);hardwareStep=caps.zoom.step||.01;hardwareMin=caps.zoom.min;slider.step=.01;slider.value=(track.getSettings().zoom??hardwareBase)/hardwareBase;}catch(e){/* Retain digital framing when hardware control is unavailable. */}
+    try{hardwareBase=caps.zoom.min>0?caps.zoom.min:1;await track.applyConstraints({advanced:[{zoom:hardwareBase}]});hardwareZoom=true;slider.min=caps.zoom.min/hardwareBase;slider.max=Math.min(caps.zoom.max/hardwareBase,6);hardwareStep=caps.zoom.step||.01;hardwareMin=caps.zoom.min;hardwareMax=caps.zoom.max;slider.step=.01;slider.value=(track.getSettings().zoom??hardwareBase)/hardwareBase;}catch(e){/* Retain digital framing when hardware control is unavailable. */}
   }
+  slider.min=lensScale;slider.value=lensScale;slider.max=Math.max(3,Number(slider.max)*lensScale);
+  if(facing==='environment'&&rearWide&&rearUltra)slider.min=.5;
   $('zoomValue').textContent=Number(slider.value).toFixed(1)+'×';syncZoomButtons();
 
 }
@@ -34,8 +38,16 @@ function syncZoomButtons(){
 }
 async function changeZoom(){
  if(busy||cameraOpening)return;
- const value=Number($('zoom').value);$('zoomValue').textContent=value.toFixed(1)+'×';syncZoomButtons();
- if(!hardwareZoom||!stream?.active){digitalZoom=value;if(!live)resumeCamera();return;}
+ const value=Number($('zoom').value);
+ const targetLens=facing==='environment'?(value<1?rearUltra:rearWide):null;
+ if(targetLens&&stream?.active&&targetLens.deviceId!==stream.getVideoTracks()[0].getSettings().deviceId){
+  if(zoomChanging){requestedZoom=null;while(zoomChanging)await wait(10);if(Number($('zoom').value)!==value)return;}
+  await camera(targetLens.deviceId);if(!stream?.active)return;
+  if(stream.getVideoTracks()[0].getSettings().deviceId!==targetLens.deviceId){status('이 렌즈를 열지 못했어요.');return;}
+  $('zoom').value=value;return changeZoom();
+ }
+ $('zoomValue').textContent=value.toFixed(1)+'×';syncZoomButtons();
+ if(!hardwareZoom||!stream?.active){digitalZoom=Math.max(1,value/lensScale);if(!live)resumeCamera();return;}
  requestedZoom=value;
  if(zoomChanging)return;
  zoomChanging=true;$('record').disabled=true;$('flip').disabled=true;
@@ -43,11 +55,11 @@ async function changeZoom(){
  try{
   while(requestedZoom!==null){
    const target=requestedZoom;requestedZoom=null;
-   const raw=target*hardwareBase;
+   const raw=target/lensScale*hardwareBase;
    const quantized=hardwareMin+Math.round((raw-hardwareMin)/hardwareStep)*hardwareStep;
-   const actual=Math.max(Number($('zoom').min)*hardwareBase,Math.min(Number($('zoom').max)*hardwareBase,quantized));
-   try{await track.applyConstraints({advanced:[{zoom:actual}]});}
-   catch(e){if(requestedZoom===null){$('zoom').value=(track.getSettings().zoom||hardwareBase)/hardwareBase;$('zoomValue').textContent=Number($('zoom').value).toFixed(1)+'×';syncZoomButtons();status('이 배율은 카메라에서 적용되지 않았어요.');}}
+   const actual=Math.max(hardwareMin,Math.min(hardwareMax,quantized));
+   try{await track.applyConstraints({advanced:[{zoom:actual}]});digitalZoom=Math.max(1,raw/actual);}
+   catch(e){if(requestedZoom===null){$('zoom').value=(track.getSettings().zoom||hardwareBase)/hardwareBase*lensScale;$('zoomValue').textContent=Number($('zoom').value).toFixed(1)+'×';syncZoomButtons();status('이 배율은 카메라에서 적용되지 않았어요.');}}
   }
  }finally{zoomChanging=false;$('record').disabled=busy||cameraOpening;$('flip').disabled=busy;if(!live)resumeCamera();}
 }
@@ -61,9 +73,12 @@ function standardRearCamera(devices){
 }
 async function acquireCamera(video,explicitDevice){
  let acquired=await navigator.mediaDevices.getUserMedia({video,audio:false});
- if(facing!=='environment'||explicitDevice)return acquired;
+ if(facing!=='environment'){rearWide=null;rearUltra=null;return acquired;}
  try{
-  const chosen=standardRearCamera(await navigator.mediaDevices.enumerateDevices());
+  const devices=await navigator.mediaDevices.enumerateDevices();
+  rearWide=standardRearCamera(devices);rearUltra=ultraRearCamera(devices);
+  if(explicitDevice)return acquired;
+  const chosen=rearWide;
   if(chosen&&chosen.deviceId!==acquired.getVideoTracks()[0].getSettings().deviceId){
    acquired.getTracks().forEach(t=>t.stop());
    try{acquired=await navigator.mediaDevices.getUserMedia({video:{...video,facingMode:undefined,deviceId:{exact:chosen.deviceId}},audio:false});}
@@ -72,3 +87,5 @@ async function acquireCamera(video,explicitDevice){
  }catch(e){if(!acquired.active)throw e;}
  return acquired;
 }
+
+function ultraRearCamera(devices){return devices.find(d=>d.kind==='videoinput'&&/ultra[ -]?wide|초광각|울트라.*광각/i.test(d.label)&&!/front|전면/i.test(d.label))||null;}

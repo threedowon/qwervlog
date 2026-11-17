@@ -2,7 +2,7 @@ const fs=require('fs'),vm=require('vm'),assert=require('node:assert/strict');
 const camera=fs.readFileSync('camera.js','utf8');
 const nodes={};const $=id=>nodes[id]??={value:'1',textContent:'',setAttribute(){}};
 const track={getCapabilities:()=>({zoom:{min:.5,max:4,step:.1}}),applyConstraints:async v=>{track.zoom=v.advanced[0].zoom;},getSettings:()=>({zoom:track.zoom})};
-const c={$,stream:{getVideoTracks:()=>[track]},document:{querySelectorAll:()=>[]}};vm.createContext(c);vm.runInContext(camera+'\nsyncZoomButtons=()=>{};globalThis.api={standardRearCamera,configureCamera};',c);
+const c={$,facing:'environment',stream:{getVideoTracks:()=>[track]},document:{querySelectorAll:()=>[]}};vm.createContext(c);vm.runInContext(camera+'\nsyncZoomButtons=()=>{};globalThis.api={standardRearCamera,configureCamera};',c);
 (async()=>{
 const devices=['Back Triple Camera','Back Ultra Wide Camera','Back Camera','Front Camera'].map((label,i)=>({kind:'videoinput',label,deviceId:String(i)}));assert.equal(c.api.standardRearCamera(devices).label,'Back Camera');assert.equal(c.api.standardRearCamera(devices.slice(0,2)),null);
 await c.api.configureCamera();assert.equal(track.zoom,.5);assert.equal(Number($('zoom').value),1);assert.equal(Number($('zoom').min),1);

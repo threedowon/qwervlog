@@ -9,5 +9,5 @@ function box(type,data){const b=new Uint8Array(8+data.length);new DataView(b.buf
  const restored=await readBackupTiming(new File([marked],'IMG_1234.MP4',{type:'video/mp4'}));assert.equal(restored.timing.capturedAt,clip.capturedAt);
  const unchanged=await mp4Info(raw);assert.equal(unchanged.capturedAt,null);
  // Standard creation date survives even when the custom trailing UUID is stripped.
- const stripped=marked.slice(0,raw.size);const recovered=await readBackupTiming(new File([stripped],'IMG_1234.MP4'));assert.equal(recovered.timing.capturedAt,clip.capturedAt);
- }console.log('PASS: one-hour bounded sampling, 180 chronological frames, MP4 v0/v1 timestamp, renamed-file restore, stripped-custom-metadata restore, original unchanged');})();
+ const stripped=marked.slice(0,raw.size);const recovered=await readBackupTiming(new File([stripped],'IMG_1234.MP4'));assert.equal(recovered.timing.capturedAt,null);
+ }console.log('PASS: one-hour bounded sampling, 180 chronological frames, MP4 v0/v1 timestamp, renamed-file restore, stripped-metadata is unverified, original unchanged');})();

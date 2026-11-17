@@ -42,7 +42,7 @@ async function stampBackup(blob,clip){
 function appleCreationDate(bytes){
  const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),decode=new TextDecoder();
  function children(start,end){const out=[];for(let p=start;p+8<=end;){const size=view.getUint32(p);if(size<8||p+size>end)break;out.push({type:decode.decode(bytes.slice(p+4,p+8)),index:view.getUint32(p+4),start:p+8,end:p+size});p+=size;}return out;}
- const atoms=children(4,bytes.length),keys=atoms.find(a=>a.type==='keys'),ilst=atoms.find(a=>a.type==='ilst');if(!keys||!ilst||keys.start+8>keys.end)return null;
+ const full=children(4,bytes.length),atoms=full.some(a=>a.type==='keys')?full:children(0,bytes.length),keys=atoms.find(a=>a.type==='keys'),ilst=atoms.find(a=>a.type==='ilst');if(!keys||!ilst||keys.start+8>keys.end)return null;
  let p=keys.start+8,target=0;const count=view.getUint32(keys.start+4);
  for(let i=1;i<=count&&p+8<=keys.end;i++){const size=view.getUint32(p);if(size<8||p+size>keys.end)break;if(decode.decode(bytes.slice(p+8,p+size))==='com.apple.quicktime.creationdate')target=i;p+=size;}
  if(!target)return null;
@@ -59,7 +59,8 @@ async function readBackupTiming(file){
   const info=await mp4Info(file);
   if(info.own){const stamp=info.own.capturedAt;return {timing:stamp&&Number.isFinite(Date.parse(stamp))?{...captureTiming(new Date(stamp)),timeSource:'backup'}:unknownCaptureTiming(),own:info.own};}
   const match=file.name.match(/qwervlog-(\d{13})-/);
-  const stamp=info.appleCapturedAt||(match?new Date(Number(match[1])).toISOString():null)||info.capturedAt;
+  // mvhd can be an export/transcode time, not the original shooting time.
+  const stamp=info.appleCapturedAt||(match?new Date(Number(match[1])).toISOString():null);
   if(stamp&&Number.isFinite(Date.parse(stamp)))return {timing:{...captureTiming(new Date(stamp)),timeSource:info.appleCapturedAt?'camera-metadata':match?'filename':'file-metadata'},own:null};
  }catch(e){}
  return {timing:unknownCaptureTiming(),own:null};
