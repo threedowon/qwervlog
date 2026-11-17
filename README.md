@@ -17,7 +17,7 @@ Browser storage is tied to the site address. Clips on another deployment are not
 
 ## Phone backup and open-ended timelapse
 
-- Timelapse starts after the countdown and stops on a second shutter tap. The length setting is output duration (default 6 seconds), not a capture deadline. Keep the page visible; screen wake lock is requested where available.
+- Timelapse starts immediately on the shutter tap and stops on a second shutter tap. The length setting is output duration (default 6 seconds), not a capture deadline. Keep the page visible; screen wake lock is requested where available.
 - Sampling is bounded to 360 JPEG frames, thinning evenly as recording grows. This is a compressed timelapse source, not a full-duration recording. Long sessions still require device testing.
 - Before review, a separate 1080×1920 clean video is encoded without captions, time, or collage. Keep invokes file sharing synchronously, before IndexedDB persistence. The user must select Save Video on iOS; sharing completion is not proof of Photos storage. Unsupported file sharing falls back to file download. The last prepared backup can be shared again until a new clip is prepared or the page is reloaded.
 - MP4 creation timestamps use the actual capture start. A custom UUID box carries capture start, output duration, and mode; timestamp is also in the file name. Import reads the UUID, Apple QuickTime shooting date, or original backup filename. Generic MP4 creation dates are not trusted because they can describe transcoding. Missing capture time stays blank. Photos/transcoding may remove metadata; verify a round-trip on the target iPhone. Video metadata is separate from baked-in pixels. Edited captions and collage placement are not backed up in the clean source.

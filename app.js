@@ -112,17 +112,6 @@ async function renderPendingClip(){
  const photos=await Promise.all(collageFrames(clip).map(image));if(pendingClip!==clip)return;
  draw(photos[1],photos,clip.caption,clip.time,clip.collage,clipLayout(clip),clip.sourceBounds?.[photoIndicesFor(clip)[1]]);
 }
-let countdownAudio=null;
-async function enableCountdownSound(){
- try{const Audio=window.AudioContext||window.webkitAudioContext;if(!Audio)return;if(!countdownAudio||countdownAudio.state==='closed')countdownAudio=new Audio();if(countdownAudio.state==='suspended')await countdownAudio.resume();}catch(e){/* Recording still works when device audio is unavailable. */}
-}
-function countdownBeep(n){
- if(!countdownAudio||countdownAudio.state!=='running')return;
- const a=countdownAudio,t=a.currentTime,osc=a.createOscillator(),gain=a.createGain();
- osc.type='sine';osc.frequency.value=n===1?1046:784;
- gain.gain.setValueAtTime(0,t);gain.gain.linearRampToValueAtTime(.18,t+.01);gain.gain.exponentialRampToValueAtTime(.001,t+.15);
- osc.connect(gain);gain.connect(a.destination);osc.start(t);osc.stop(t+.17);osc.onended=()=>{osc.disconnect();gain.disconnect();};
-}
 async function add(frames,m,seconds,timing=beginTiming(),sourceBounds=null){
  const id=crypto.randomUUID();pendingClip={id,layoutVersion:2,layout:layoutFor(id),frames,width:VIDEO_WIDTH,height:VIDEO_HEIGHT,fps:VIDEO_FPS,sourceBounds:sourceBounds||frames.map(()=>[0,0,VIDEO_WIDTH,VIDEO_HEIGHT]),mode:m,seconds,caption:$('caption').value,...timing,collage:$('collage').checked};
  stopLive();$('empty').hidden=true;
@@ -137,12 +126,12 @@ async function record(){
  if(timelapseRecording){timelapseStop=true;$('record').disabled=true;return;}
  if(busy||cameraOpening||zoomChanging||keeping)return;
  if(!stream||!stream.active){await camera();return;}
- const soundReady=enableCountdownSound();cancelled=false;timelapseStop=false;lock(true);
+ cancelled=false;timelapseStop=false;lock(true);let captureActive=true;
  try{
-  try{wakeLock=await navigator.wakeLock?.request('screen');}catch(e){}
-  await soundReady;stopLive();live=true;loop();$('counter').hidden=false;
-  for(let n=3;n>0;n--){$('counter').textContent=n;countdownBeep(n);await wait(1000);if(cancelled)throw Error('촬영을 취소했어요.');}
-  $('counter').hidden=true;const timing=beginTiming();activeCaptureTime=timing.time;
+  // Capture starts without waiting for screen-wake permission.
+  const timing=beginTiming();activeCaptureTime=timing.time;
+  try{navigator.wakeLock?.request('screen').then(lock=>{if(captureActive)wakeLock=lock;else void lock.release().catch(()=>{});}).catch(()=>{});}catch(e){}
+  stopLive();live=true;loop();
   const seconds=clipLengths[mode],count=seconds*VIDEO_FPS,start=performance.now();let frames=[],bounds=[];
   if(mode==='timelapse'){
    const samples=new TimelapseSamples();timelapseRecording=true;$('record').disabled=false;$('record').setAttribute('aria-label','타임랩스 촬영 정지');
@@ -168,7 +157,7 @@ async function record(){
   if(cancelled)throw Error('촬영을 취소했어요.');
   $('record').disabled=true;await add(frames,mode,seconds,timing,bounds.length?bounds:null);
  }catch(e){status(e.message);}
- finally{timelapseRecording=false;activeCaptureTime=null;$('counter').hidden=true;stopLive();await wakeLock?.release().catch(()=>{});wakeLock=null;lock(false);updateDurationLabels();}
+ finally{captureActive=false;timelapseRecording=false;activeCaptureTime=null;stopLive();await wakeLock?.release().catch(()=>{});wakeLock=null;lock(false);updateDurationLabels();}
 }
 async function importVideo(file){if(!file)return;if(file.size>300*1024*1024){status('300MB 이하의 영상을 선택해 주세요.');return}cancelled=false;lock(true);stopLive();const recovered=await readBackupTiming(file);const timing=recovered?.timing||unknownCaptureTiming();let url=URL.createObjectURL(file),v=document.createElement('video');v.muted=true;v.playsInline=true;v.preload='auto';try{await new Promise((res,rej)=>{v.onloadedmetadata=res;v.onerror=()=>rej(Error('영상을 읽지 못했어요. 다른 파일을 선택해주세요.'));v.src=url});let d=v.duration;if(!Number.isFinite(d)||d<=0)throw Error('이 영상의 길이를 확인할 수 없어요.');const own=recovered?.own,importMode=own?(own.mode==='timelapse'?'timelapse':'normal'):mode,seconds=own?Math.max(1,Math.min(30,Number(own.seconds)||d)):mode==='normal'?Math.min(30,d):clipLengths[mode],count=Math.round(seconds*VIDEO_FPS),span=own?d:mode==='normal'?Math.min(seconds,d):d,frames=[];for(let i=0;i<count;i++){if(cancelled)throw Error('가져오기를 취소했어요.');await new Promise((res,rej)=>{let timer=setTimeout(()=>rej(Error('영상 읽기 시간이 초과됐어요.')),10000);v.onseeked=()=>{clearTimeout(timer);res()};v.currentTime=Math.min(Math.max(.001,i*span/count),Math.max(.001,d-.03))});frames.push(snapshot(v));status(`영상 준비 중 · ${Math.round((i+1)/count*100)}%`)}await add(frames,importMode,seconds,timing)}catch(e){status(e.message)}finally{v.removeAttribute('src');v.load();URL.revokeObjectURL(url);$('upload').value='';lock(false)}}
 // Decode only a small moving window, not every full-HD frame in every clip.
