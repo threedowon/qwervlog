@@ -160,7 +160,26 @@ async function record(){
  }catch(e){status(e.message);}
  finally{captureActive=false;timelapseRecording=false;activeCaptureTime=null;stopLive();await wakeLock?.release().catch(()=>{});wakeLock=null;lock(false);updateDurationLabels();}
 }
-async function importVideo(file){if(!file)return;if(file.size>300*1024*1024){status('300MB 이하의 영상을 선택해 주세요.');return}cancelled=false;lock(true);stopLive();const recovered=await readBackupTiming(file);const timing=recovered?.timing||unknownCaptureTiming();let url=URL.createObjectURL(file),v=document.createElement('video');v.muted=true;v.playsInline=true;v.preload='auto';try{await new Promise((res,rej)=>{v.onloadedmetadata=res;v.onerror=()=>rej(Error('영상을 읽지 못했어요. 다른 파일을 선택해주세요.'));v.src=url});let d=v.duration;if(!Number.isFinite(d)||d<=0)throw Error('이 영상의 길이를 확인할 수 없어요.');const own=recovered?.own,importMode=own?(own.mode==='timelapse'?'timelapse':'normal'):mode,seconds=own?Math.max(1,Math.min(30,Number(own.seconds)||d)):mode==='normal'?Math.min(30,d):clipLengths[mode],count=Math.round(seconds*VIDEO_FPS),span=own?d:mode==='normal'?Math.min(seconds,d):d,frames=[];for(let i=0;i<count;i++){if(cancelled)throw Error('가져오기를 취소했어요.');await new Promise((res,rej)=>{let timer=setTimeout(()=>rej(Error('영상 읽기 시간이 초과됐어요.')),10000);v.onseeked=()=>{clearTimeout(timer);res()};v.currentTime=Math.min(Math.max(.001,i*span/count),Math.max(.001,d-.03))});frames.push(snapshot(v));status(`영상 준비 중 · ${Math.round((i+1)/count*100)}%`)}await add(frames,importMode,seconds,timing)}catch(e){status(e.message)}finally{v.removeAttribute('src');v.load();URL.revokeObjectURL(url);$('upload').value='';lock(false)}}
+async function importVideo(file){
+ if(!file||busy)return;
+ if(file.size>300*1024*1024){status('300MB 이하의 영상을 선택해 주세요.');return;}
+ cancelled=false;lock(true);stopLive();let source;
+ try{
+  status('영상의 첫 화면을 읽고 있어요…');
+  const recovered=await readBackupTiming(file),timing=recovered?.timing||unknownCaptureTiming();
+  source=await loadVideoFile(file,()=>cancelled);const v=source.video,d=v.duration;
+  const own=recovered?.own,importMode=own?(own.mode==='timelapse'?'timelapse':'normal'):mode;
+  const seconds=own?Math.max(1,Math.min(30,Number(own.seconds)||d)):mode==='normal'?Math.min(30,d):clipLengths[mode];
+  const count=Math.max(1,Math.round(seconds*VIDEO_FPS)),span=own?d:mode==='normal'?Math.min(seconds,d):d,frames=[];
+  for(let i=0;i<count;i++){
+   await seekDecodedFrame(v,i*span/count,()=>cancelled);
+   frames.push(snapshot(v));status(`영상 준비 중 · ${Math.round((i+1)/count*100)}%`);
+  }
+  if(cancelled)throw Error('가져오기를 취소했어요.');
+  await add(frames,importMode,seconds,timing);
+ }catch(e){status(e.message);}
+ finally{source?.dispose();$('upload').value='';lock(false);}
+}
 // Decode only a small moving window, not every full-HD frame in every clip.
 async function prepareClip(clip){
  if(clip.sourceBlob)return prepareImportedClip(clip);

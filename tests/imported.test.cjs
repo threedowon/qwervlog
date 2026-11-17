@@ -2,7 +2,7 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),vm=requir
 function context(fail=false){
  let revoked=0,paused=0;
  const video={duration:64.5,videoWidth:1080,videoHeight:1920,pause(){paused++;},load(){},removeAttribute(){},play:async()=>{},set src(value){queueMicrotask(()=>fail?this.onerror():this.onloadeddata());}};
- const ctx=vm.createContext({document:{createElement:()=>video},URL:{createObjectURL:()=> 'blob:test',revokeObjectURL(){revoked++;}},crypto:{randomUUID:()=> 'test'},$:()=>({}),setTimeout,clearTimeout});
+ const ctx=vm.createContext({cancelled:false,loadVideoFile:async()=>{if(fail){revoked++;paused++;throw Error("영상 형식");}let disposed=false;return {video,dispose(){if(!disposed){disposed=true;revoked++;paused++;}}};},document:{createElement:()=>video},URL:{createObjectURL:()=> 'blob:test',revokeObjectURL(){revoked++;}},crypto:{randomUUID:()=> 'test'},$:()=>({}),setTimeout,clearTimeout});
  vm.runInContext(fs.readFileSync('imported.js','utf8'),ctx);
  return {ctx,video,revoked:()=>revoked,paused:()=>paused};
 }

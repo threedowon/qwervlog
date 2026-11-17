@@ -1,19 +1,5 @@
 'use strict';
-async function openImportedVideo(blob){
- const url=URL.createObjectURL(blob),video=document.createElement('video');
- video.muted=true;video.playsInline=true;video.preload='auto';
- let disposed=false;
- const dispose=()=>{if(disposed)return;disposed=true;video.pause();video.removeAttribute('src');video.load();URL.revokeObjectURL(url);};
- try{
-  await new Promise((resolve,reject)=>{
-   const timer=setTimeout(()=>finish(Error('영상을 읽는 시간이 초과됐어요. 다시 추가해 주세요.')),15000);
-   const finish=error=>{clearTimeout(timer);video.onloadeddata=null;video.onerror=null;error?reject(error):resolve();};
-   video.onloadeddata=()=>finish();video.onerror=()=>finish(Error('이 영상 형식을 읽지 못했어요. MP4 영상으로 다시 선택해 주세요.'));video.src=url;
-  });
-  if(!Number.isFinite(video.duration)||video.duration<=0||!video.videoWidth)throw Error('영상 길이를 확인할 수 없어요.');
-  return {video,dispose};
- }catch(error){dispose();throw error;}
-}
+async function openImportedVideo(blob){return loadVideoFile(blob,()=>cancelled);}
 function importedClip(file,video,thumbnail){
  return {id:crypto.randomUUID(),mode:'imported',sourceBlob:file,filename:file.name,seconds:video.duration,
   width:video.videoWidth,height:video.videoHeight,frames:[thumbnail,thumbnail,thumbnail],
