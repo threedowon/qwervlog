@@ -24,3 +24,19 @@ async function prepareImportedClip(clip){
  return {photos:[],frame:async()=>source.video,start:()=>source.video.play(),dispose:source.dispose};
 }
 $('galleryUpload').onchange=e=>void importGalleryVideo(e.target.files[0]);
+
+// New recordings retain a compressed clean video and only the three collage stills.
+// Legacy JPEG-frame clips continue to use prepareClip without conversion.
+function compactRecording(clip,file){
+ const frames=collageFrames(clip),bounds=photoIndicesFor(clip).map(i=>clip.sourceBounds?.[i]||[0,0,clip.width,clip.height]);
+ const old=clip.frames;clip.playbackBlob=file;clip.frames=frames;clip.sourceBounds=bounds;clip.photoIndices=[0,1,2];old.length=0;
+}
+async function prepareRecordedClip(clip){
+ const source=await openImportedVideo(clip.playbackBlob);
+ try{
+  const photos=await Promise.all(collageFrames(clip).map(image));
+  return {photos,frame:async()=>source.video,
+   start:async(position=0)=>{await seekDecodedFrame(source.video,position,()=>cancelled);await source.video.play();},
+   pause:()=>source.video.pause(),dispose(){photos.forEach(img=>img.src='');source.dispose();}};
+ }catch(e){source.dispose();throw e;}
+}

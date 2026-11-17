@@ -67,6 +67,7 @@ async function readBackupTiming(file){
 }
 let pendingBackup=null,backupURL=null,keeping=false;
 async function makeCleanBackup(clip){
+ if(clip.playbackBlob)return clip.playbackBlob;
  if(!window.MediaRecorder)throw Error('이 브라우저는 원본 영상 저장을 지원하지 않아요.');
  const type=['video/mp4;codecs=avc1.42E01E','video/mp4','video/webm'].find(t=>MediaRecorder.isTypeSupported(t));if(!type)throw Error('원본 저장 형식을 지원하지 않아요.');
  const c=document.createElement('canvas');c.width=VIDEO_WIDTH;c.height=VIDEO_HEIGHT;const x=c.getContext('2d');x.imageSmoothingEnabled=true;x.imageSmoothingQuality='high';
@@ -74,13 +75,13 @@ async function makeCleanBackup(clip){
  await paint(0);const output=c.captureStream(VIDEO_FPS),rec=new MediaRecorder(output,{mimeType:type,videoBitsPerSecond:16000000}),chunks=[];
  const ended=new Promise((res,rej)=>{rec.onstop=res;rec.onerror=()=>rej(Error('원본 영상 준비에 실패했어요.'));});ended.catch(()=>{});
  rec.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
- try{rec.start();const start=performance.now();for(let i=0;i<clip.frames.length;i++){
+ try{rec.start(1000);const start=performance.now();for(let i=0;i<clip.frames.length;i++){
   if(cancelled||document.hidden)throw Error('원본 준비가 중단됐어요. 원본 저장을 다시 눌러주세요.');
   await paint(i);await wait(Math.max(0,start+(i+1)*clip.seconds*1000/clip.frames.length-performance.now()));
  }rec.stop();await ended;
  const blob=await stampBackup(new Blob(chunks,{type:type.includes('mp4')?'video/mp4':'video/webm'}),clip);
  return new File([blob],`qwervlog-${clip.capturedAt?Date.parse(clip.capturedAt):'unknown'}-${clip.mode}.${type.includes('mp4')?'mp4':'webm'}`,{type:blob.type,lastModified:clip.capturedAt?Date.parse(clip.capturedAt):Date.now()});
- }finally{if(rec.state!=='inactive')rec.stop();output.getTracks().forEach(t=>t.stop());}
+ }finally{if(rec.state!=='inactive')rec.stop();output.getTracks().forEach(t=>t.stop());c.width=0;c.height=0;}
 }
 function setBackupFile(file){pendingBackup=file;if(backupURL)URL.revokeObjectURL(backupURL);backupURL=file?URL.createObjectURL(file):null;$('backupAgain').hidden=!file;}
 function shareCleanBackup(){
@@ -96,11 +97,14 @@ async function keepAndBackup(){
  if(!pendingClip||busy||keeping)return;
  if(!pendingBackup){await prepareBackup();return;}
  keeping=true;pausePendingClip();const clip=pendingClip;
- // Open the native share sheet synchronously inside this tap, before DB awaits.
- let sharing;try{sharing=shareCleanBackup().catch(e=>{if(e.name==='AbortError')return false;return false;});}catch(e){sharing=Promise.resolve(false);}
- if(!clips.some(c=>c.id===clip.id))clips.push(clip);
  $('keep').disabled=true;$('retake').disabled=true;
- const saved=await persist();renderList();const shared=await sharing;
+ const added=!clips.some(c=>c.id===clip.id);if(added)clips.push(clip);
+ const saved=await persist();renderList();
+ // Never open another app before the local transaction completes.
+ if(!saved){if(added)clips=clips.filter(c=>c.id!==clip.id);renderList();keeping=false;$('keep').disabled=false;$('retake').disabled=false;status('기기에 저장하지 못했어요. 이 화면을 유지하고 원본 다시 저장으로 백업해 주세요.');return;}
+ let shared=false;
+ try{shared=await shareCleanBackup();}catch(e){/* Safari may require a new tap after an IndexedDB await. */}
+
  startNext();keeping=false;
  status(!saved?'기기에 보관하지 못했어요. 원본 다시 저장으로 파일을 꼭 보관해 주세요.':shared?'담았어요. 사진 앱에 저장됐는지 확인해 주세요.':'담았어요. 원본 다시 저장으로 비디오 저장을 완료해 주세요.');
 }
