@@ -1,0 +1,20 @@
+const {test}=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
+function context(fail=false){
+ let revoked=0,paused=0;
+ const video={duration:64.5,videoWidth:1080,videoHeight:1920,pause(){paused++;},load(){},removeAttribute(){},play:async()=>{},set src(value){queueMicrotask(()=>fail?this.onerror():this.onloadeddata());}};
+ const ctx=vm.createContext({document:{createElement:()=>video},URL:{createObjectURL:()=> 'blob:test',revokeObjectURL(){revoked++;}},crypto:{randomUUID:()=> 'test'},$:()=>({}),setTimeout,clearTimeout});
+ vm.runInContext(fs.readFileSync('imported.js','utf8'),ctx);
+ return {ctx,video,revoked:()=>revoked,paused:()=>paused};
+}
+test('edited imports preserve full length and video file without duplicate captions or collage',()=>{
+ const {ctx,video}=context();const file={name:'edited.mp4'};const clip=ctx.importedClip(file,video,'thumbnail');
+ assert.equal(clip.seconds,64.5);assert.equal(clip.sourceBlob,file);assert.equal(clip.caption,'');assert.equal(clip.time,'');assert.equal(clip.collage,false);assert.equal(clip.frames.length,3);assert.equal(clip.mode,'imported');
+});
+test('prepared imported video cleans up media URL once on completion or cancellation',async()=>{
+ const {ctx,video,revoked,paused}=context();const media=await ctx.prepareImportedClip({sourceBlob:{}});
+ await media.start();assert.equal(await media.frame(0),video);assert.equal(await media.frame(2),video);
+ media.dispose();media.dispose();assert.equal(revoked(),1);assert.equal(paused(),1);
+});
+test('unreadable import releases its URL without leaving a video decoder alive',async()=>{
+ const {ctx,revoked,paused}=context(true);await assert.rejects(ctx.openImportedVideo({}),/영상 형식/);assert.equal(revoked(),1);assert.equal(paused(),1);
+});
