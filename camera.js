@@ -16,13 +16,15 @@ function paintCamera(c,source,w,h){
 function resumeCamera(){if(stream?.active&&!busy){$('empty').hidden=true;stopLive();live=true;loop()}}
 async function configureCamera(){
   const track=stream.getVideoTracks()[0],caps=track.getCapabilities?.()||{},slider=$('zoom');
+  // Some browsers expose lens names only once the preview has started.
+  if(facing==='environment'){try{rememberRearCameras(await navigator.mediaDevices.enumerateDevices(),track);}catch(e){}}
   lensScale=facing==='environment'&&rearUltra&&rearUltra.deviceId===track.getSettings().deviceId?.toString()?0.5:1;
   digitalZoom=1;hardwareZoom=false;hardwareBase=1;slider.min=lensScale;slider.max=3;slider.step=.01;slider.value=lensScale;
   if(caps.zoom&&Number.isFinite(caps.zoom.min)&&Number.isFinite(caps.zoom.max)&&caps.zoom.max>caps.zoom.min){
-    try{hardwareBase=caps.zoom.min>0?caps.zoom.min:1;await track.applyConstraints({advanced:[{zoom:hardwareBase}]});hardwareZoom=true;slider.min=caps.zoom.min/hardwareBase;slider.max=Math.min(caps.zoom.max/hardwareBase,6);hardwareStep=caps.zoom.step||.01;hardwareMin=caps.zoom.min;hardwareMax=caps.zoom.max;slider.step=.01;slider.value=(track.getSettings().zoom??hardwareBase)/hardwareBase;}catch(e){/* Retain digital framing when hardware control is unavailable. */}
+    try{hardwareBase=caps.zoom.min<1&&caps.zoom.max>=1?1:(caps.zoom.min>0?caps.zoom.min:1);await track.applyConstraints({advanced:[{zoom:hardwareBase}]});hardwareZoom=true;slider.min=caps.zoom.min/hardwareBase;slider.max=Math.min(caps.zoom.max/hardwareBase,6);hardwareStep=caps.zoom.step||.01;hardwareMin=caps.zoom.min;hardwareMax=caps.zoom.max;slider.step=.01;slider.value=(track.getSettings().zoom??hardwareBase)/hardwareBase;}catch(e){/* Retain digital framing when hardware control is unavailable. */}
   }
-  slider.min=lensScale;slider.value=lensScale;slider.max=Math.max(3,Number(slider.max)*lensScale);
-  if(facing==='environment'&&rearWide&&rearUltra)slider.min=.5;
+  slider.min=hardwareZoom?lensScale*hardwareMin/hardwareBase:lensScale;slider.value=lensScale;slider.max=Math.max(3,Number(slider.max)*lensScale);
+  if(facing==='environment'&&rearWide&&rearUltra)slider.min=Math.min(.5,Number(slider.min));
   $('zoomValue').textContent=Number(slider.value).toFixed(1)+'×';syncZoomButtons();
 
 }
@@ -76,7 +78,7 @@ async function acquireCamera(video,explicitDevice){
  if(facing!=='environment'){rearWide=null;rearUltra=null;return acquired;}
  try{
   const devices=await navigator.mediaDevices.enumerateDevices();
-  rearWide=standardRearCamera(devices);rearUltra=ultraRearCamera(devices);
+  rememberRearCameras(devices,acquired.getVideoTracks()[0]);
   if(explicitDevice)return acquired;
   const chosen=rearWide;
   if(chosen&&chosen.deviceId!==acquired.getVideoTracks()[0].getSettings().deviceId){
@@ -88,4 +90,14 @@ async function acquireCamera(video,explicitDevice){
  return acquired;
 }
 
-function ultraRearCamera(devices){return devices.find(d=>d.kind==='videoinput'&&/ultra[ -]?wide|초광각|울트라.*광각/i.test(d.label)&&!/front|전면/i.test(d.label))||null;}
+function ultraRearCamera(devices){return devices.find(d=>d.kind==='videoinput'&&/ultra[\s_‑–-]*wide|초\s*광각|울트라.*광각|(?:^|\s)0[.,]5\s*[x×배]/i.test(d.label)&&!/front|전면/i.test(d.label))||null;}
+
+// Keep a usable return lens even when the browser calls it only "Back Camera 1".
+function rememberRearCameras(devices,track){
+ const cameras=devices.filter(d=>d.kind==='videoinput');
+ const ultra=ultraRearCamera(cameras),wide=standardRearCamera(cameras);
+ const current=cameras.find(d=>d.deviceId===track.getSettings().deviceId);
+ rearUltra=ultra||cameras.find(d=>d.deviceId===rearUltra?.deviceId)||null;
+ rearWide=wide||cameras.find(d=>d.deviceId===rearWide?.deviceId)||null;
+ if(!rearWide&&current&&current.deviceId!==rearUltra?.deviceId&&!/front|전면|tele|망원|dual|triple|듀얼|트리플/i.test(current.label))rearWide=current;
+}
