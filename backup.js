@@ -9,7 +9,7 @@ class TimelapseSamples {
 const QWER_UUID=new TextEncoder().encode('qwervlog-time-v1');
 const MP4_EPOCH=2082844800;
 async function mp4Info(blob,stamp){
- const edits=[];let capturedAt=null,own=null;
+ const edits=[];let capturedAt=null,appleCapturedAt=null,own=null;
  async function walk(start,end,depth=0){
   if(depth>4)return;
   for(let p=start;p+8<=end;){
@@ -17,32 +17,52 @@ async function mp4Info(blob,stamp){
    const type=String.fromCharCode(...new Uint8Array(h.buffer,4,4));
    if(size===1){if(h.byteLength<16)break;size=Number(h.getBigUint64(8));head=16;}else if(size===0)size=end-p;
    if(size<head||p+size>end)break;
-   if(['moov','trak','mdia'].includes(type))await walk(p+head,p+size,depth+1);
+   if(['moov','trak','mdia','udta'].includes(type))await walk(p+head,p+size,depth+1);
+   if(type==='meta'&&size<1024*1024){appleCapturedAt=appleCreationDate(new Uint8Array(await blob.slice(p+head,p+size).arrayBuffer()))||appleCapturedAt;}
    if(['mvhd','tkhd','mdhd'].includes(type)&&size>=head+16){
     const data=new Uint8Array(await blob.slice(p+head,p+Math.min(size,head+24)).arrayBuffer()),v=new DataView(data.buffer),wide=data[0]===1;
     const value=wide?Number(v.getBigUint64(4)):v.getUint32(4);
     if(type==='mvhd'&&value>MP4_EPOCH){const date=new Date((value-MP4_EPOCH)*1000);if(date.getUTCFullYear()>=2000&&date.getTime()<=Date.now()+86400000)capturedAt=date.toISOString();}
-    if(stamp){const sec=Math.floor(new Date(stamp).getTime()/1000)+MP4_EPOCH;if(wide){v.setBigUint64(4,BigInt(sec));v.setBigUint64(12,BigInt(sec));}else{v.setUint32(4,sec);v.setUint32(8,sec);}edits.push({at:p+head,data});}
+    if(stamp!==undefined){const sec=stamp?Math.floor(new Date(stamp).getTime()/1000)+MP4_EPOCH:0;if(wide){v.setBigUint64(4,BigInt(sec));v.setBigUint64(12,BigInt(sec));}else{v.setUint32(4,sec);v.setUint32(8,sec);}edits.push({at:p+head,data});}
    }
    if(type==='uuid'&&size<4096&&size>=head+16){const bytes=new Uint8Array(await blob.slice(p+head,p+size).arrayBuffer());if(QWER_UUID.every((v,i)=>bytes[i]===v)){try{own=JSON.parse(new TextDecoder().decode(bytes.slice(16)));}catch(e){}}}
    p+=size;
   }
  }
- await walk(0,blob.size);return {edits,capturedAt,own};
+ await walk(0,blob.size);return {edits,capturedAt,appleCapturedAt,own};
 }
 async function stampBackup(blob,clip){
  if(!blob.type.includes('mp4'))return blob;
- const {edits}=await mp4Info(blob,clip.capturedAt),parts=[];let pos=0;
+ const {edits}=await mp4Info(blob,clip.capturedAt||null),parts=[];let pos=0;
  for(const e of edits.sort((a,b)=>a.at-b.at)){parts.push(blob.slice(pos,e.at),e.data);pos=e.at+e.data.length;}parts.push(blob.slice(pos));
  const json=new TextEncoder().encode(JSON.stringify({capturedAt:clip.capturedAt,seconds:clip.seconds,mode:clip.mode}));
  const box=new Uint8Array(24+json.length);new DataView(box.buffer).setUint32(0,box.length);box.set(new TextEncoder().encode('uuid'),4);box.set(QWER_UUID,8);box.set(json,24);parts.push(box);
  return new Blob(parts,{type:blob.type});
 }
+function appleCreationDate(bytes){
+ const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),decode=new TextDecoder();
+ function children(start,end){const out=[];for(let p=start;p+8<=end;){const size=view.getUint32(p);if(size<8||p+size>end)break;out.push({type:decode.decode(bytes.slice(p+4,p+8)),index:view.getUint32(p+4),start:p+8,end:p+size});p+=size;}return out;}
+ const atoms=children(4,bytes.length),keys=atoms.find(a=>a.type==='keys'),ilst=atoms.find(a=>a.type==='ilst');if(!keys||!ilst||keys.start+8>keys.end)return null;
+ let p=keys.start+8,target=0;const count=view.getUint32(keys.start+4);
+ for(let i=1;i<=count&&p+8<=keys.end;i++){const size=view.getUint32(p);if(size<8||p+size>keys.end)break;if(decode.decode(bytes.slice(p+8,p+size))==='com.apple.quicktime.creationdate')target=i;p+=size;}
+ if(!target)return null;
+ const item=children(ilst.start,ilst.end).find(a=>a.index===target);if(!item)return null;
+ const data=children(item.start,item.end).find(a=>a.type==='data');if(!data||data.start+8>data.end)return null;
+ const value=decode.decode(bytes.slice(data.start+8,data.end)).replace(/\0/g,'').trim();
+ // A timezone is required; never reinterpret a timezone-less export date as local time.
+ if(!/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:?\d{2})$/.test(value)||!Number.isFinite(Date.parse(value)))return null;
+ return new Date(value).toISOString();
+}
+function unknownCaptureTiming(){return {capturedAt:null,capturedTime:'',time:'',timeSource:'unknown'};}
 async function readBackupTiming(file){
- try{const info=await mp4Info(file);const stamp=info.own?.capturedAt||info.capturedAt;
- if(stamp&&Number.isFinite(Date.parse(stamp)))return {timing:captureTiming(new Date(stamp)),own:info.own};}catch(e){}
- const match=file.name.match(/qwervlog-(\d{13})-/);if(match)return {timing:captureTiming(new Date(Number(match[1]))),own:null};
- return null;
+ try{
+  const info=await mp4Info(file);
+  if(info.own){const stamp=info.own.capturedAt;return {timing:stamp&&Number.isFinite(Date.parse(stamp))?{...captureTiming(new Date(stamp)),timeSource:'backup'}:unknownCaptureTiming(),own:info.own};}
+  const match=file.name.match(/qwervlog-(\d{13})-/);
+  const stamp=info.appleCapturedAt||(match?new Date(Number(match[1])).toISOString():null)||info.capturedAt;
+  if(stamp&&Number.isFinite(Date.parse(stamp)))return {timing:{...captureTiming(new Date(stamp)),timeSource:info.appleCapturedAt?'camera-metadata':match?'filename':'file-metadata'},own:null};
+ }catch(e){}
+ return {timing:unknownCaptureTiming(),own:null};
 }
 let pendingBackup=null,backupURL=null,keeping=false;
 async function makeCleanBackup(clip){
@@ -58,7 +78,7 @@ async function makeCleanBackup(clip){
   await paint(i);await wait(Math.max(0,start+(i+1)*clip.seconds*1000/clip.frames.length-performance.now()));
  }rec.stop();await ended;
  const blob=await stampBackup(new Blob(chunks,{type:type.includes('mp4')?'video/mp4':'video/webm'}),clip);
- return new File([blob],`qwervlog-${Date.parse(clip.capturedAt)}-${clip.mode}.${type.includes('mp4')?'mp4':'webm'}`,{type:blob.type,lastModified:Date.parse(clip.capturedAt)});
+ return new File([blob],`qwervlog-${clip.capturedAt?Date.parse(clip.capturedAt):'unknown'}-${clip.mode}.${type.includes('mp4')?'mp4':'webm'}`,{type:blob.type,lastModified:clip.capturedAt?Date.parse(clip.capturedAt):Date.now()});
  }finally{if(rec.state!=='inactive')rec.stop();output.getTracks().forEach(t=>t.stop());}
 }
 function setBackupFile(file){pendingBackup=file;if(backupURL)URL.revokeObjectURL(backupURL);backupURL=file?URL.createObjectURL(file):null;$('backupAgain').hidden=!file;}

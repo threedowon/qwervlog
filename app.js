@@ -52,7 +52,7 @@ function renderList(){
  clips.forEach((clip,i)=>{
   const item=document.createElement('div');item.className='clip'+(i===selected?' selected':'');item.dataset.id=clip.id;
   const img=document.createElement('img');img.src=clip.frames[0];img.alt=`${i+1}번째 컷 미리보기`;img.draggable=false;
-  const edit=document.createElement('button');edit.className='edit';edit.textContent=`${i+1}. ${clip.mode==='timelapse'?'타임랩스':clip.mode==='sample'?'샘플':'일반'} · ${clip.seconds}초`;edit.disabled=busy;
+  const edit=document.createElement('button');edit.className='edit';edit.textContent=`${i+1}. ${clip.mode==='timelapse'?'타임랩스':clip.mode==='sample'?'샘플':'일반'} · ${Number(clip.seconds.toFixed(1))}초`;edit.disabled=busy;
   const choose=()=>{if(!busy&&performance.now()>suppressClipClickUntil)select(i);};edit.onclick=choose;img.onclick=choose;
   const handle=document.createElement('button');handle.className='dragHandle';handle.textContent='⠿';handle.setAttribute('aria-label',`${i+1}번 컷 순서 변경`);handle.title='위아래로 드래그 · 키보드 방향키로 이동';handle.disabled=busy;
   handle.onkeydown=e=>{if(!busy&&['ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();move(i,e.key==='ArrowUp'?-1:1);}};
@@ -98,7 +98,7 @@ async function playPendingClip(){
    if(token!==reviewPlayback.token||pendingClip!==clip)return;
    reviewPlayback.position=elapsed;
    draw(source,media.photos,clip.caption,clip.time,clip.collage,clipLayout(clip),clip.sourceBounds?.[i]);
-   $('reviewProgress').textContent=`${elapsed.toFixed(1)} / ${clip.seconds}초`;
+   $('reviewProgress').textContent=`${elapsed.toFixed(1)} / ${Number(clip.seconds.toFixed(1))}초`;
    if(elapsed>=clip.seconds){pausePendingClip();return;}
    reviewPlayback.raf=requestAnimationFrame(step);
   }catch(e){if(token===reviewPlayback.token){pausePendingClip();status('미리보기를 다시 눌러주세요.');}}};
@@ -131,7 +131,7 @@ async function add(frames,m,seconds,timing=beginTiming(),sourceBounds=null){
  status('꾸밈없는 원본 영상을 준비하고 있어요…');
  try{setBackupFile(await makeCleanBackup(pendingClip));}catch(e){status(e.message);}
  await renderPendingClip();
- $('reviewProgress').textContent=`0.0 / ${pendingClip.seconds}초`;$('captureDock').hidden=true;$('reviewDock').hidden=false;$('textEdit').hidden=true;status(pendingBackup?'담기를 누른 뒤 공유창에서 비디오 저장을 선택해 주세요.':'원본 준비를 완료하지 못했어요. 담기를 눌러 다시 준비해 주세요.');
+ $('reviewProgress').textContent=`0.0 / ${Number(pendingClip.seconds.toFixed(1))}초`;$('captureDock').hidden=true;$('reviewDock').hidden=false;$('textEdit').hidden=true;status(pendingClip.timeSource==='unknown'?'촬영 시각을 찾지 못했어요. 문구 · 시간 수정에서 직접 입력해 주세요.':pendingBackup?'담기를 누른 뒤 공유창에서 비디오 저장을 선택해 주세요.':'원본 준비를 완료하지 못했어요. 담기를 눌러 다시 준비해 주세요.');
 }
 async function record(){
  if(timelapseRecording){timelapseStop=true;$('record').disabled=true;return;}
@@ -170,7 +170,7 @@ async function record(){
  }catch(e){status(e.message);}
  finally{timelapseRecording=false;activeCaptureTime=null;$('counter').hidden=true;stopLive();await wakeLock?.release().catch(()=>{});wakeLock=null;lock(false);updateDurationLabels();}
 }
-async function importVideo(file){if(!file)return;if(file.size>300*1024*1024){status('300MB 이하의 영상을 선택해 주세요.');return}cancelled=false;lock(true);stopLive();const recovered=await readBackupTiming(file);const timing=recovered?.timing||beginTiming();let url=URL.createObjectURL(file),v=document.createElement('video');v.muted=true;v.playsInline=true;v.preload='auto';try{await new Promise((res,rej)=>{v.onloadedmetadata=res;v.onerror=()=>rej(Error('영상을 읽지 못했어요. 다른 파일을 선택해주세요.'));v.src=url});let d=v.duration;if(!Number.isFinite(d)||d<=0)throw Error('이 영상의 길이를 확인할 수 없어요.');const own=recovered?.own,importMode=own?(own.mode==='timelapse'?'timelapse':'normal'):mode,seconds=own?Math.max(1,Math.min(30,Number(own.seconds)||d)):mode==='normal'?Math.min(30,d):clipLengths[mode],count=Math.round(seconds*VIDEO_FPS),span=own?d:mode==='normal'?Math.min(seconds,d):d,frames=[];for(let i=0;i<count;i++){if(cancelled)throw Error('가져오기를 취소했어요.');await new Promise((res,rej)=>{let timer=setTimeout(()=>rej(Error('영상 읽기 시간이 초과됐어요.')),10000);v.onseeked=()=>{clearTimeout(timer);res()};v.currentTime=Math.min(Math.max(.001,i*span/count),Math.max(.001,d-.03))});frames.push(snapshot(v));status(`영상 준비 중 · ${Math.round((i+1)/count*100)}%`)}await add(frames,importMode,seconds,timing)}catch(e){status(e.message)}finally{v.removeAttribute('src');v.load();URL.revokeObjectURL(url);$('upload').value='';lock(false)}}
+async function importVideo(file){if(!file)return;if(file.size>300*1024*1024){status('300MB 이하의 영상을 선택해 주세요.');return}cancelled=false;lock(true);stopLive();const recovered=await readBackupTiming(file);const timing=recovered?.timing||unknownCaptureTiming();let url=URL.createObjectURL(file),v=document.createElement('video');v.muted=true;v.playsInline=true;v.preload='auto';try{await new Promise((res,rej)=>{v.onloadedmetadata=res;v.onerror=()=>rej(Error('영상을 읽지 못했어요. 다른 파일을 선택해주세요.'));v.src=url});let d=v.duration;if(!Number.isFinite(d)||d<=0)throw Error('이 영상의 길이를 확인할 수 없어요.');const own=recovered?.own,importMode=own?(own.mode==='timelapse'?'timelapse':'normal'):mode,seconds=own?Math.max(1,Math.min(30,Number(own.seconds)||d)):mode==='normal'?Math.min(30,d):clipLengths[mode],count=Math.round(seconds*VIDEO_FPS),span=own?d:mode==='normal'?Math.min(seconds,d):d,frames=[];for(let i=0;i<count;i++){if(cancelled)throw Error('가져오기를 취소했어요.');await new Promise((res,rej)=>{let timer=setTimeout(()=>rej(Error('영상 읽기 시간이 초과됐어요.')),10000);v.onseeked=()=>{clearTimeout(timer);res()};v.currentTime=Math.min(Math.max(.001,i*span/count),Math.max(.001,d-.03))});frames.push(snapshot(v));status(`영상 준비 중 · ${Math.round((i+1)/count*100)}%`)}await add(frames,importMode,seconds,timing)}catch(e){status(e.message)}finally{v.removeAttribute('src');v.load();URL.revokeObjectURL(url);$('upload').value='';lock(false)}}
 // Decode only a small moving window, not every full-HD frame in every clip.
 async function prepareClip(clip){
  const cache=new Map();
@@ -217,7 +217,7 @@ function openSettings(textOnly=false){
  settingsOriginal={pending:Boolean(pendingClip),clipId:clip?.id??null,caption:clip?.caption??$('caption').value,time:clip?.time??$('time').value,collage:clip?.collage??$('collage').checked};
  $('editSaveStatus').textContent='';$('editCaption').disabled=false;$('editCaption').readOnly=false;$('editCaption').value=settingsOriginal.caption;$('editTime').value=settingsOriginal.time;$('editCollage').checked=settingsOriginal.collage;
  syncTimeControl();$('editTime').disabled=$('time').disabled;
- $('settingsSheet').classList.toggle('captionOnly',textOnly&&$('galleryScreen').hidden);openCaptionSheet();if(textOnly){$('editCaption').focus({preventScroll:true});}
+ $('settingsSheet').classList.toggle('captionOnly',textOnly&&!pendingClip&&$('galleryScreen').hidden);openCaptionSheet();if(textOnly){$('editCaption').focus({preventScroll:true});}
 }
 function showScreen(screen){if(busy||pendingClip)return;const gallery=screen==='gallery';selectionRenderToken++;stopLive();$('shootScreen').hidden=gallery;$('galleryScreen').hidden=!gallery;(gallery?$('galleryStage'):$('cameraStage')).prepend(document.querySelector('.viewer'));$('shootTab').setAttribute('aria-current',gallery?'false':'page');$('galleryTab').setAttribute('aria-current',gallery?'page':'false');if(gallery){if(clips.length)select(selected>=0?selected:clips.length-1);else $('empty').hidden=false;}else{selected=-1;if(stream?.active)resumeCamera();else{$('empty').hidden=false;camera();}}status(gallery?'컷을 선택해 문구를 바꾸거나 순서를 정리하세요.':'준비되면 촬영 버튼을 눌러주세요.');}
 function startNext(){resetPendingPlayback();pendingClip=null;for(const id of ['shootTab','galleryTab','textEdit','collageToggle','durationOpen'])$(id).disabled=false;$('captureDock').hidden=false;$('reviewDock').hidden=true;$('textEdit').hidden=false;selected=-1;if(stream?.active)resumeCamera();else{$('empty').hidden=false;ctx.clearRect(0,0,canvas.width,canvas.height);}}
@@ -244,8 +244,8 @@ $('settingsClose').onclick=async()=>{
  try{
   if(session.pending){
    if(pendingClip?.id!==session.clipId)throw Error('수정할 컷을 다시 선택해 주세요.');
-   pausePendingClip();const previousCaption=pendingClip.caption;pendingClip.caption=values.caption;
-   try{await renderPendingClip();}catch(e){pendingClip.caption=previousCaption;throw e;}reviewPlayback.position=0;
+   pausePendingClip();const previous={caption:pendingClip.caption,time:pendingClip.time,collage:pendingClip.collage};Object.assign(pendingClip,values);
+   try{await renderPendingClip();}catch(e){Object.assign(pendingClip,previous);throw e;}reviewPlayback.position=0;
    settingsOriginal=null;closeCaptionSheet();status('문구를 반영했어요. 담기를 누르면 보관돼요.');
   }else if(session.clipId!==null){
    const index=clips.findIndex(c=>c.id===session.clipId);if(index<0)throw Error('수정할 컷을 다시 선택해 주세요.');
