@@ -12,13 +12,6 @@ let clips=[],selected=-1,stream=null,facing='environment',mode='normal',busy=fal
 $('time').value=localClock(new Date());
 const status=t=>$('status').textContent=t;
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
-// Start loading the caption face early; never export a fallback font.
-let captionFontReady=document.fonts.load('400 21px "MaruBuri"','오늘').then(faces=>faces.length>0,()=>false);
-async function ensureCaptionFont(){
- if(await captionFontReady)return;
- captionFontReady=document.fonts.load('400 21px "MaruBuri"','오늘').then(faces=>faces.length>0,()=>false);
- if(!await captionFontReady)throw Error('자막 폰트를 불러오지 못했어요. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.');
-}
 const image=src=>new Promise((resolve,reject)=>{let i=new Image();i.onload=()=>resolve(i);i.onerror=reject;i.src=src});
 function cover(c,source,x,y,w,h,crop){const sw=source.videoWidth||source.naturalWidth||source.width,sh=source.videoHeight||source.naturalHeight||source.height;if(!sw||!sh)return;const bounded=crop?{...crop,bounds:crop.bounds||detectPadding(source)}:undefined;c.drawImage(source,...cropRect(sw,sh,w,h,bounded),x,y,w,h)}
 function draw(source,photos=[],caption=$('caption').value,time=$('time').value,collage=$('collage').checked,layout=layoutFor('preview'),backgroundBounds){ctx.save();ctx.scale(canvas.width/540,canvas.height/960);ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.fillStyle='#232b23';ctx.fillRect(0,0,540,960);if(source){if(source===$('camera'))paintCamera(ctx,source,540,960);else cover(ctx,source,0,0,540,960,{zoom:1,x:.5,y:.5,bounds:backgroundBounds||detectPadding(source)});}if(collage&&photos.length){layout.forEach((r,i)=>{if(photos[i])cover(ctx,photos[i],...r)})}ctx.save();ctx.fillStyle='white';ctx.strokeStyle='#000';ctx.lineWidth=1.5;ctx.lineJoin='round';ctx.miterLimit=2;ctx.shadowBlur=0;ctx.textAlign='center';ctx.textBaseline='middle';const clock=videoClock(time),hasCaption=Boolean(caption?.trim());ctx.font='500 22px -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", Arial, sans-serif';if(clock){const y=hasCaption?466:480;ctx.strokeText(clock,270,y);ctx.fillText(clock,270,y);}if(hasCaption)drawCaption(ctx,caption,270,clock?494:480);ctx.restore();ctx.restore()}
@@ -72,7 +65,7 @@ function renderList(){
  for(const id of ['play','export'])$(id).disabled=busy||!clips.length;
 }
 
-async function select(i){const token=++selectionRenderToken;await captionFontReady;stopLive();selected=i;let clip=clips[i];if(!clip)return;$('empty').hidden=true;syncTimeControl();let imgs=await Promise.all(collageFrames(clip).map(image));if(token!==selectionRenderToken||clips[selected]?.id!==clip.id||live||$('galleryScreen').hidden)return;draw(imgs[1],imgs,clip.caption,clip.time,clip.collage,clipLayout(clip),clip.sourceBounds?.[photoIndicesFor(clip)[1]]);renderList()}
+async function select(i){const token=++selectionRenderToken;stopLive();selected=i;let clip=clips[i];if(!clip)return;$('empty').hidden=true;syncTimeControl();let imgs=await Promise.all(collageFrames(clip).map(image));if(token!==selectionRenderToken||clips[selected]?.id!==clip.id||live||$('galleryScreen').hidden)return;draw(imgs[1],imgs,clip.caption,clip.time,clip.collage,clipLayout(clip),clip.sourceBounds?.[photoIndicesFor(clip)[1]]);renderList()}
 async function move(i,delta){let j=i+delta;if(j<0||j>=clips.length)return;[clips[i],clips[j]]=[clips[j],clips[i]];await select(j);persist()}
 async function remove(i){clips.splice(i,1);selected=Math.min(i,clips.length-1);renderList();persist();if(selected>=0)select(selected);else{$('empty').hidden=false;ctx.clearRect(0,0,canvas.width,canvas.height)}}
 
@@ -116,7 +109,7 @@ $('reviewPlay').onclick=()=>void playPendingClip();
 document.addEventListener('visibilitychange',()=>{if(document.hidden)pausePendingClip();});
 async function renderPendingClip(){
  const clip=pendingClip;if(!clip)return;
- await captionFontReady;
+ 
  const photos=await Promise.all(collageFrames(clip).map(image));if(pendingClip!==clip)return;
  draw(photos[1],photos,clip.caption,clip.time,clip.collage,clipLayout(clip),clip.sourceBounds?.[photoIndicesFor(clip)[1]]);
 }
@@ -170,7 +163,6 @@ async function record(){
 async function importVideo(file){if(!file)return;if(file.size>300*1024*1024){status('300MB 이하의 영상을 선택해 주세요.');return}cancelled=false;lock(true);stopLive();const recovered=await readBackupTiming(file);const timing=recovered?.timing||unknownCaptureTiming();let url=URL.createObjectURL(file),v=document.createElement('video');v.muted=true;v.playsInline=true;v.preload='auto';try{await new Promise((res,rej)=>{v.onloadedmetadata=res;v.onerror=()=>rej(Error('영상을 읽지 못했어요. 다른 파일을 선택해주세요.'));v.src=url});let d=v.duration;if(!Number.isFinite(d)||d<=0)throw Error('이 영상의 길이를 확인할 수 없어요.');const own=recovered?.own,importMode=own?(own.mode==='timelapse'?'timelapse':'normal'):mode,seconds=own?Math.max(1,Math.min(30,Number(own.seconds)||d)):mode==='normal'?Math.min(30,d):clipLengths[mode],count=Math.round(seconds*VIDEO_FPS),span=own?d:mode==='normal'?Math.min(seconds,d):d,frames=[];for(let i=0;i<count;i++){if(cancelled)throw Error('가져오기를 취소했어요.');await new Promise((res,rej)=>{let timer=setTimeout(()=>rej(Error('영상 읽기 시간이 초과됐어요.')),10000);v.onseeked=()=>{clearTimeout(timer);res()};v.currentTime=Math.min(Math.max(.001,i*span/count),Math.max(.001,d-.03))});frames.push(snapshot(v));status(`영상 준비 중 · ${Math.round((i+1)/count*100)}%`)}await add(frames,importMode,seconds,timing)}catch(e){status(e.message)}finally{v.removeAttribute('src');v.load();URL.revokeObjectURL(url);$('upload').value='';lock(false)}}
 // Decode only a small moving window, not every full-HD frame in every clip.
 async function prepareClip(clip){
- if(clip.caption?.trim())await ensureCaptionFont();
  const cache=new Map();
  const get=i=>{if(!cache.has(i))cache.set(i,image(clip.frames[i]));return cache.get(i);};
  const photos=await Promise.all(collageFrames(clip).map(image));
@@ -181,7 +173,7 @@ async function prepareClip(clip){
   return get(i);
  }};
 }
-async function sequence(exporting){if(!clips.length||busy)return;cancelled=false;lock(true);stopLive();$('empty').hidden=true;let recorder=null,outputStream=null;try{status('컷을 준비하고 있어요…');let media=await prepareClip(clips[0]),fc=clips[0];draw(await media.frame(0),media.photos,fc.caption,fc.time,fc.collage,clipLayout(fc),fc.sourceBounds?.[0]);let chunks=[];if(exporting){if(!window.MediaRecorder||!canvas.captureStream)throw Error('이 브라우저에서는 영상 저장을 지원하지 않아요. 최신 Safari 또는 Chrome에서 열어주세요.');let type=['video/mp4;codecs=avc1.42E01E','video/mp4','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'].find(t=>MediaRecorder.isTypeSupported(t));if(!type)throw Error('지원되는 영상 저장 형식을 찾지 못했어요.');outputStream=canvas.captureStream(30);recorder=new MediaRecorder(outputStream,{mimeType:type,videoBitsPerSecond:16000000});recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};recorder.start()}
+async function sequence(exporting){if(!clips.length||busy)return;if(!exporting)openSequencePreview();cancelled=false;lock(true);stopLive();$('empty').hidden=true;let recorder=null,outputStream=null;try{status('컷을 준비하고 있어요…');let media=await prepareClip(clips[0]),fc=clips[0];draw(await media.frame(0),media.photos,fc.caption,fc.time,fc.collage,clipLayout(fc),fc.sourceBounds?.[0]);let chunks=[];if(exporting){if(!window.MediaRecorder||!canvas.captureStream)throw Error('이 브라우저에서는 영상 저장을 지원하지 않아요. 최신 Safari 또는 Chrome에서 열어주세요.');let type=['video/mp4;codecs=avc1.42E01E','video/mp4','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'].find(t=>MediaRecorder.isTypeSupported(t));if(!type)throw Error('지원되는 영상 저장 형식을 찾지 못했어요.');outputStream=canvas.captureStream(30);recorder=new MediaRecorder(outputStream,{mimeType:type,videoBitsPerSecond:16000000});recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};recorder.start()}
 for(let index=0;index<clips.length;index++){
  const clip=clips[index];
  const next=index+1<clips.length?prepareClip(clips[index+1]):null;if(next)next.catch(()=>{});
@@ -192,11 +184,11 @@ for(let index=0;index<clips.length;index++){
   const frameIndex=Math.min(clip.frames.length-1,Math.floor(elapsed/clip.seconds*clip.frames.length));
   const source=await media.frame(frameIndex);
   draw(source,media.photos,clip.caption,clip.time,clip.collage,clipLayout(clip),clip.sourceBounds?.[frameIndex]);
-  status(`${exporting?'1080p 영상 만드는 중':'이어서 보는 중'} · ${index+1}/${clips.length} 컷`);requestAnimationFrame(step);
+  status(`${exporting?'1080p 영상 만드는 중':'이어서 보는 중'} · ${index+1}/${clips.length} 컷`);if(!exporting)$('sequenceProgress').textContent=`${index+1} / ${clips.length} 컷`;requestAnimationFrame(step);
  }catch(e){reject(e)}}requestAnimationFrame(step)});
  if(next){if(recorder?.state==='recording')recorder.pause();media=await next;if(recorder?.state==='paused')recorder.resume();}
 }
-if(recorder){await new Promise((res,rej)=>{recorder.onstop=res;recorder.onerror=()=>rej(Error('영상 저장 중 오류가 발생했어요.'));recorder.stop()});resultBlob=new Blob(chunks,{type:recorder.mimeType});if(resultURL)URL.revokeObjectURL(resultURL);resultURL=URL.createObjectURL(resultBlob);$('result').src=resultURL;$('download').href=resultURL;$('download').download=`after-hours-${new Date().toISOString().slice(0,10)}.${resultBlob.type.includes('mp4')?'mp4':'webm'}`;$('downloadArea').hidden=false;status(`완성했어요! ${clips.reduce((s,c)=>s+c.seconds,0)}초 · 1080×1920 · ${resultBlob.type.includes('mp4')?'MP4':'WebM'} · 아래에서 다운로드하거나 공유하세요.`)}else status('모든 컷을 재생했어요.')}catch(e){status(e.message);if(recorder&&recorder.state!=='inactive')recorder.stop()}finally{outputStream?.getTracks().forEach(t=>t.stop());lock(false)}}
+if(recorder){await new Promise((res,rej)=>{recorder.onstop=res;recorder.onerror=()=>rej(Error('영상 저장 중 오류가 발생했어요.'));recorder.stop()});resultBlob=new Blob(chunks,{type:recorder.mimeType});if(resultURL)URL.revokeObjectURL(resultURL);resultURL=URL.createObjectURL(resultBlob);$('result').src=resultURL;$('download').href=resultURL;$('download').download=`after-hours-${new Date().toISOString().slice(0,10)}.${resultBlob.type.includes('mp4')?'mp4':'webm'}`;$('downloadArea').hidden=false;status(`완성했어요! ${clips.reduce((s,c)=>s+c.seconds,0)}초 · 1080×1920 · ${resultBlob.type.includes('mp4')?'MP4':'WebM'} · 아래에서 다운로드하거나 공유하세요.`)}else{status('모든 컷을 재생했어요.');if($('sequencePreview').open)$('sequenceProgress').textContent='모든 컷을 재생했어요.';}}catch(e){status(!exporting&&!$('sequencePreview').open?'미리보기를 닫았어요.':e.message);if(!exporting&&$('sequencePreview').open)$('sequenceProgress').textContent=e.message;if(recorder&&recorder.state!=='inactive')recorder.stop()}finally{outputStream?.getTracks().forEach(t=>t.stop());lock(false);if(!exporting)$('sequenceReplay').hidden=!$('sequencePreview').open;}}
 $('cameraStart').onclick=()=>{selected=-1;camera()};$('zoom').oninput=changeZoom;$('flip').onclick=()=>{facing=facing==='environment'?'user':'environment';camera()};$('normal').onclick=()=>setMode('normal');$('timelapse').onclick=()=>setMode('timelapse');$('record').onclick=record;$('cancel').onclick=()=>{cancelled=true};$('upload').onchange=e=>importVideo(e.target.files[0]);$('play').onclick=()=>sequence(false);$('export').onclick=()=>sequence(true);$('share').onclick=async()=>{try{let file=new File([resultBlob],$('download').download,{type:resultBlob.type});if(navigator.canShare?.({files:[file]}))await navigator.share({files:[file]});else $('download').click()}catch(e){if(e.name!=='AbortError')status('공유하지 못했어요. 다운로드 버튼으로 저장해주세요.')}};document.addEventListener('visibilitychange',()=>{if(document.hidden&&busy)cancelled=true});window.addEventListener('pagehide',()=>stream?.getTracks().forEach(t=>t.stop()));setMode('normal');syncTimeControl();initDB().finally(()=>{if(!$('shootScreen').hidden&&!busy&&!pendingClip&&!stream?.active)camera();});
 
 // A regular overlay avoids native dialog focus changes during iOS keyboard composition.
@@ -298,7 +290,7 @@ function detectPadding(source){
 function captionGlyphs(text){return typeof Intl.Segmenter==='function'?[...new Intl.Segmenter('ko',{granularity:'grapheme'}).segment(text)].map(x=>x.segment):Array.from(text);}
 function drawCaption(c,text,x,y){
  const glyphs=captionGlyphs(text),spacing=.8;let size=21,widths,total;
- do{c.font=`400 ${size}px "MaruBuri", "Apple SD Gothic Neo", serif`;widths=glyphs.map(g=>c.measureText(g).width);total=widths.reduce((a,b)=>a+b,0)+Math.max(0,glyphs.length-1)*spacing;if(total<=490||size<=10)break;size--;}while(true);
+ do{c.font=`400 ${size}px -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", Arial, sans-serif`;widths=glyphs.map(g=>c.measureText(g).width);total=widths.reduce((a,b)=>a+b,0)+Math.max(0,glyphs.length-1)*spacing;if(total<=490||size<=10)break;size--;}while(true);
  c.textAlign='left';for(const method of ['strokeText','fillText']){let left=x-total/2;glyphs.forEach((g,i)=>{c[method](g,left,y);left+=widths[i]+spacing;});}
 }
 
