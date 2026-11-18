@@ -21,7 +21,7 @@ async function importGalleryVideo(file){
 }
 async function prepareImportedClip(clip){
  const source=await openImportedVideo(clip.sourceBlob);
- return {photos:[],position:()=>source.video.currentTime,frame:async()=>source.video,start:async(position=0)=>{await seekDecodedFrame(source.video,position,()=>cancelled);await source.video.play();},dispose:source.dispose};
+ return {photos:[],position:()=>source.video.currentTime,frame:async()=>source.video,start:async(position=0,rate=1)=>{source.video.playbackRate=rate;await seekDecodedFrame(source.video,position,()=>cancelled);await source.video.play();},dispose:source.dispose};
 }
 $('galleryUpload').onchange=e=>void importGalleryVideo(e.target.files[0]);
 
@@ -36,7 +36,7 @@ async function prepareRecordedClip(clip){
  try{
   const photos=await Promise.all(collageFrames(clip).map(image));
   return {photos,position:()=>source.video.currentTime,frame:async()=>source.video,
-   start:async(position=0)=>{await seekDecodedFrame(source.video,position,()=>cancelled);await source.video.play();},
+   start:async(position=0,rate=1)=>{source.video.playbackRate=rate;await seekDecodedFrame(source.video,position,()=>cancelled);await source.video.play();},
    pause:()=>source.video.pause(),dispose(){photos.forEach(img=>img.src='');source.dispose();}};
  }catch(e){source.dispose();throw e;}
 }

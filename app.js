@@ -222,8 +222,8 @@ for(let index=0;index<plan.length;index++){
  // Safari must not warm up another video while this clip is being recorded.
  if(index>0)media=await prepare(clip);
  if(cancelled)throw Error("미리보기를 중단했어요.");
- const sourceStart=segment.start||0;
- await media.start?.(sourceStart);
+ const sourceStart=segment.start||0,playbackRate=segment.playbackRate||1;
+ await media.start?.(sourceStart,playbackRate);
  const firstIndex=Math.min(clip.frames.length-1,Math.floor(sourceStart/clip.seconds*clip.frames.length));
  drawSequenceFrame(await media.frame(firstIndex),media.photos,segment,firstIndex);
  if(recorder?.state==='inactive')recorder.start(1000);else if(recorder?.state==='paused')recorder.resume();
@@ -234,7 +234,7 @@ for(let index=0;index<plan.length;index++){
   const elapsed=(now-start)/1000;
   if(media.position){const position=media.position();if(position>lastMediaTime+.005){lastMediaTime=position;lastAdvance=now;}else if(now-lastAdvance>1000&&position<clip.seconds-.15)throw Error(`${index+1}번째 컷 재생이 멈춰 저장을 중단했어요. 다시 시도해 주세요.`);}
   if(elapsed>=segment.seconds){resolve();return;}
-  const frameIndex=Math.min(clip.frames.length-1,Math.floor((sourceStart+elapsed)/clip.seconds*clip.frames.length));
+  const frameIndex=Math.min(clip.frames.length-1,Math.floor((sourceStart+elapsed*playbackRate)/clip.seconds*clip.frames.length));
   const source=await media.frame(frameIndex);
   drawSequenceFrame(source,media.photos,segment,frameIndex);
   status(`${exporting?'1080p 영상 만드는 중':'이어서 보는 중'} · ${segment.intro?'오프닝':'본편'} ${index+1}/${plan.length} 컷`);if(!exporting)$('sequenceProgress').textContent=`${segment.intro?'오프닝':'본편'} · ${index+1} / ${plan.length} 컷`;requestAnimationFrame(step);
