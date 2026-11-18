@@ -418,3 +418,7 @@ $('openingClear').onclick=()=>{if(busy)return;opening.ids=[];opening.ranges=[];r
 $('openingSeconds').onchange=()=>{if(busy)return;opening=normalizeOpening({...opening,seconds:$('openingSeconds').value});syncOpening();void saveOpening();};
 
 for(const button of document.querySelectorAll('[data-opening-title]'))button.onclick=()=>{if(busy)return;opening.title=button.dataset.openingTitle;syncOpening();void saveOpening();};
+
+let openingTextSaveTimer;
+$('openingCustomText').addEventListener('input',()=>{opening.customText=$('openingCustomText').value;clearTimeout(openingTextSaveTimer);openingTextSaveTimer=setTimeout(()=>void saveOpening(),350);});
+$('openingCustomText').addEventListener('blur',()=>{clearTimeout(openingTextSaveTimer);opening.customText=$('openingCustomText').value;void saveOpening();});
