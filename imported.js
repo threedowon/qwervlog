@@ -21,7 +21,7 @@ async function importGalleryVideo(file){
 }
 async function prepareImportedClip(clip){
  const source=await openImportedVideo(clip.sourceBlob);
- return {photos:[],position:()=>source.video.currentTime,frame:async()=>source.video,start:()=>source.video.play(),dispose:source.dispose};
+ return {photos:[],position:()=>source.video.currentTime,frame:async()=>source.video,start:async(position=0)=>{await seekDecodedFrame(source.video,position,()=>cancelled);await source.video.play();},dispose:source.dispose};
 }
 $('galleryUpload').onchange=e=>void importGalleryVideo(e.target.files[0]);
 

@@ -2,7 +2,7 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),vm=requir
 function context(fail=false){
  let revoked=0,paused=0;
  const video={duration:64.5,videoWidth:1080,videoHeight:1920,pause(){paused++;},load(){},removeAttribute(){},play:async()=>{},set src(value){queueMicrotask(()=>fail?this.onerror():this.onloadeddata());}};
- const ctx=vm.createContext({cancelled:false,loadVideoFile:async()=>{if(fail){revoked++;paused++;throw Error("영상 형식");}let disposed=false;return {video,dispose(){if(!disposed){disposed=true;revoked++;paused++;}}};},document:{createElement:()=>video},URL:{createObjectURL:()=> 'blob:test',revokeObjectURL(){revoked++;}},crypto:{randomUUID:()=> 'test'},$:()=>({}),setTimeout,clearTimeout});
+ const ctx=vm.createContext({cancelled:false,seekDecodedFrame:async(v,t)=>{v.currentTime=t;},loadVideoFile:async()=>{if(fail){revoked++;paused++;throw Error("영상 형식");}let disposed=false;return {video,dispose(){if(!disposed){disposed=true;revoked++;paused++;}}};},document:{createElement:()=>video},URL:{createObjectURL:()=> 'blob:test',revokeObjectURL(){revoked++;}},crypto:{randomUUID:()=> 'test'},$:()=>({}),setTimeout,clearTimeout});
  vm.runInContext(fs.readFileSync('imported.js','utf8'),ctx);
  return {ctx,video,revoked:()=>revoked,paused:()=>paused};
 }
@@ -12,7 +12,7 @@ test('edited imports preserve full length and video file without duplicate capti
 });
 test('prepared imported video cleans up media URL once on completion or cancellation',async()=>{
  const {ctx,video,revoked,paused}=context();const media=await ctx.prepareImportedClip({sourceBlob:{}});
- await media.start();assert.equal(await media.frame(0),video);assert.equal(await media.frame(2),video);
+ await media.start(12);assert.equal(video.currentTime,12);assert.equal(await media.frame(0),video);assert.equal(await media.frame(2),video);
  media.dispose();media.dispose();assert.equal(revoked(),1);assert.equal(paused(),1);
 });
 test('unreadable import releases its URL without leaving a video decoder alive',async()=>{
