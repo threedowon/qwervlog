@@ -216,14 +216,14 @@ async function prepareClip(clip){
   return get(i);
  }};
 }
-async function sequence(exporting,onlyOpening=false){if(!clips.length||busy)return;const plan=sequencePlan(clips,opening,onlyOpening);if(!plan.length)return;if(!exporting){previewOpeningOnly=onlyOpening;openSequencePreview();}cancelled=false;lock(true);releaseCamera();if(exporting){if(resultURL)URL.revokeObjectURL(resultURL);resultURL=null;resultBlob=null;$('result').removeAttribute('src');$('result').load();$('downloadArea').hidden=true;}$('empty').hidden=true;let recorder=null,outputStream=null;const resources=new Set();let finished=false;const prepare=async clip=>{const media=await prepareClip(clip);if(finished){media.dispose?.();throw Error('미리보기가 종료됐어요.');}resources.add(media);return media;};try{status('컷을 준비하고 있어요…');let media=await prepare(plan[0].clip),fc=plan[0].clip;draw(await media.frame(0),media.photos,fc.caption,fc.time,fc.collage,clipLayout(fc),fc.sourceBlob?[0,0,fc.width,fc.height]:fc.sourceBounds?.[0]);let chunks=[];if(exporting){if(!window.MediaRecorder||!canvas.captureStream)throw Error('이 브라우저에서는 영상 저장을 지원하지 않아요. 최신 Safari 또는 Chrome에서 열어주세요.');let type=['video/mp4;codecs=avc1.42E01E','video/mp4','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'].find(t=>MediaRecorder.isTypeSupported(t));if(!type)throw Error('지원되는 영상 저장 형식을 찾지 못했어요.');outputStream=canvas.captureStream(30);recorder=new MediaRecorder(outputStream,{mimeType:type,videoBitsPerSecond:16000000});recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)}}
+async function sequence(exporting,onlyOpening=false){if(!clips.length||busy)return;const plan=sequencePlan(clips,opening,onlyOpening);if(!plan.length)return;if(!exporting){previewOpeningOnly=onlyOpening;openSequencePreview();}cancelled=false;lock(true);releaseCamera();if(exporting){if(resultURL)URL.revokeObjectURL(resultURL);resultURL=null;resultBlob=null;$('result').removeAttribute('src');$('result').load();$('downloadArea').hidden=true;}$('empty').hidden=true;let recorder=null,outputStream=null;const resources=new Set();let finished=false;const prepare=async clip=>{const media=await prepareClip(clip);if(finished){media.dispose?.();throw Error('미리보기가 종료됐어요.');}resources.add(media);return media;};try{status('컷을 준비하고 있어요…');let media=await prepare(plan[0].clip),fc=plan[0].clip;drawSequenceFrame(await media.frame(0),media.photos,plan[0]);let chunks=[];if(exporting){if(!window.MediaRecorder||!canvas.captureStream)throw Error('이 브라우저에서는 영상 저장을 지원하지 않아요. 최신 Safari 또는 Chrome에서 열어주세요.');let type=['video/mp4;codecs=avc1.42E01E','video/mp4','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'].find(t=>MediaRecorder.isTypeSupported(t));if(!type)throw Error('지원되는 영상 저장 형식을 찾지 못했어요.');outputStream=canvas.captureStream(30);recorder=new MediaRecorder(outputStream,{mimeType:type,videoBitsPerSecond:16000000});recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)}}
 for(let index=0;index<plan.length;index++){
  const segment=plan[index],clip=segment.clip;
  // Safari must not warm up another video while this clip is being recorded.
  if(index>0)media=await prepare(clip);
  if(cancelled)throw Error("미리보기를 중단했어요.");
  await media.start?.();
- draw(await media.frame(0),media.photos,clip.caption,clip.time,clip.collage,clipLayout(clip),clip.sourceBlob?[0,0,clip.width,clip.height]:clip.sourceBounds?.[0]);
+ drawSequenceFrame(await media.frame(0),media.photos,segment);
  if(recorder?.state==='inactive')recorder.start(1000);else if(recorder?.state==='paused')recorder.resume();
  const start=performance.now();let lastMediaTime=media.position?.()??0,lastAdvance=start;
 
@@ -234,7 +234,7 @@ for(let index=0;index<plan.length;index++){
   if(elapsed>=segment.seconds){resolve();return;}
   const frameIndex=Math.min(clip.frames.length-1,Math.floor(elapsed/clip.seconds*clip.frames.length));
   const source=await media.frame(frameIndex);
-  draw(source,media.photos,clip.caption,clip.time,clip.collage,clipLayout(clip),clip.sourceBlob?[0,0,clip.width,clip.height]:clip.sourceBounds?.[frameIndex]);
+  drawSequenceFrame(source,media.photos,segment,frameIndex);
   status(`${exporting?'1080p 영상 만드는 중':'이어서 보는 중'} · ${segment.intro?'오프닝':'본편'} ${index+1}/${plan.length} 컷`);if(!exporting)$('sequenceProgress').textContent=`${segment.intro?'오프닝':'본편'} · ${index+1} / ${plan.length} 컷`;requestAnimationFrame(step);
  }catch(e){reject(e)}}requestAnimationFrame(step)});
  if(index+1<plan.length&&recorder?.state==='recording')recorder.pause();
@@ -414,3 +414,5 @@ $('clearCaption').onclick=()=>{if(busy)return;$('editCaption').value='';$('editC
 $('openingPreview').onclick=()=>sequence(false,true);
 $('openingClear').onclick=()=>{if(busy)return;opening.ids=[];renderList();void saveOpening();};
 $('openingSeconds').onchange=()=>{if(busy)return;opening=normalizeOpening({...opening,seconds:$('openingSeconds').value});syncOpening();void saveOpening();};
+
+for(const button of document.querySelectorAll('[data-opening-title]'))button.onclick=()=>{if(busy)return;opening.title=button.dataset.openingTitle;syncOpening();void saveOpening();};
