@@ -114,7 +114,7 @@ async function playPendingClip(){
   const step=async now=>{try{
    if(token!==reviewPlayback.token||pendingClip!==clip)return;
    if(document.hidden){pausePendingClip();return;}
-   const elapsed=Math.min(clip.seconds,(now-start)/1000),i=Math.min(clip.frames.length-1,Math.floor((sourceStart+elapsed)/clip.seconds*clip.frames.length));
+   const elapsed=Math.min(clip.seconds,(now-start)/1000),i=Math.min(clip.frames.length-1,Math.floor(elapsed/clip.seconds*clip.frames.length));
    const source=await media.frame(i);
    if(token!==reviewPlayback.token||pendingClip!==clip)return;
    reviewPlayback.position=elapsed;
