@@ -73,7 +73,7 @@ function renderList(){
   const modify=document.createElement('button');modify.className='modifyClip';modify.disabled=busy;modify.hidden=Boolean(clip.sourceBlob);modify.setAttribute('aria-label',`${i+1}번 컷 수정`);modify.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15z"/></svg>';
   modify.onclick=()=>{if(busy||performance.now()<suppressClipClickUntil)return;selected=i;openSettings(true);};
   const thumb=document.createElement('div');thumb.className='clipThumb';thumb.append(img);
-  const check=document.createElement('input');check.type='checkbox';check.className='openingCheck';check.checked=opening.ids.includes(clip.id);check.disabled=busy;check.setAttribute('aria-label',`${i+1}번째 컷 오프닝에 포함`);
+  const check=document.createElement('input');check.type='checkbox';check.className='openingCheck';check.checked=opening.ids.includes(clip.id);check.disabled=busy||Boolean(clip.sourceBlob);check.hidden=Boolean(clip.sourceBlob);check.setAttribute('aria-label',`${i+1}번째 컷 오프닝에 포함`);
   check.onpointerdown=e=>e.stopPropagation();check.onclick=e=>e.stopPropagation();
   check.onchange=()=>{opening.ids=check.checked?[...opening.ids.filter(id=>id!==clip.id),clip.id]:opening.ids.filter(id=>id!==clip.id);syncOpening();void saveOpening();};thumb.append(check);
   item.append(thumb,edit,handle,modify,del);root.append(item);bindClipDrag(item);
@@ -414,7 +414,7 @@ $('clearCaption').onclick=()=>{if(busy)return;$('editCaption').value='';$('editC
 
 
 $('openingPreview').onclick=()=>sequence(false,true);
-$('openingClear').onclick=()=>{if(busy)return;opening.ids=[];opening.ranges=[];renderList();void saveOpening();};
+$('openingClear').onclick=()=>{if(busy)return;opening.ids=[];renderList();void saveOpening();};
 $('openingSeconds').onchange=()=>{if(busy)return;opening=normalizeOpening({...opening,seconds:$('openingSeconds').value});syncOpening();void saveOpening();};
 
 for(const button of document.querySelectorAll('[data-opening-title]'))button.onclick=()=>{if(busy)return;opening.title=button.dataset.openingTitle;syncOpening();void saveOpening();};
@@ -422,3 +422,6 @@ for(const button of document.querySelectorAll('[data-opening-title]'))button.onc
 let openingTextSaveTimer;
 $('openingCustomText').addEventListener('input',()=>{opening.customText=$('openingCustomText').value;clearTimeout(openingTextSaveTimer);openingTextSaveTimer=setTimeout(()=>void saveOpening(),350);});
 $('openingCustomText').addEventListener('blur',()=>{clearTimeout(openingTextSaveTimer);opening.customText=$('openingCustomText').value;void saveOpening();});
+
+$('openingCustomColor').addEventListener('input',()=>{opening.customColor=validOpeningColor($('openingCustomColor').value);syncOpening();});
+$('openingCustomColor').addEventListener('change',()=>{opening.customColor=validOpeningColor($('openingCustomColor').value);void saveOpening();});
