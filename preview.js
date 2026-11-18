@@ -35,7 +35,7 @@ function closeSequencePreview(){
 }
 document.getElementById('sequenceClose').onclick=closeSequencePreview;
 document.getElementById('sequencePreview').addEventListener('cancel',e=>{e.preventDefault();closeSequencePreview();});
-document.getElementById('sequenceReplay').onclick=()=>sequence(false);
+document.getElementById('sequenceReplay').onclick=()=>sequence(false,previewOpeningOnly);
 document.addEventListener('fullscreenchange',()=>{
  if(sequenceHadFullscreen&&document.fullscreenElement!==document.getElementById('sequencePreview'))closeSequencePreview();
 });
