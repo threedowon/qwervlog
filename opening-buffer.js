@@ -16,7 +16,7 @@ async function prepareOpeningMedia(plan,exporting){
      const context=surface.getContext('2d');
      for(let i=0;i<count;i++){
       if(cancelled||document.hidden)throw Error('오프닝 준비를 중단했어요.');
-      await seekDecodedFrame(source.video,(segment.start||0)+i/30,()=>cancelled);
+      await seekDecodedFrame(source.video,((segment.start||0)+i/30)*(clip.playbackBlob?clipPlaybackScale(clip,source.video):1),()=>cancelled);
       context.drawImage(source.video,0,0,surface.width,surface.height);
       const blob=await new Promise((resolve,reject)=>surface.toBlob(value=>value?resolve(value):reject(Error('오프닝 이미지를 준비하지 못했어요.')),'image/jpeg',.92));bytes+=blob.size;
       // Never risk a Safari reload by growing the temporary cache without bound.

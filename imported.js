@@ -1,4 +1,9 @@
 'use strict';
+// Clip seconds are the editing timeline; encoded files can have different timestamps.
+function clipPlaybackScale(clip,video){
+ return Number.isFinite(video.duration)&&video.duration>0&&Number.isFinite(clip.seconds)&&clip.seconds>0?video.duration/clip.seconds:1;
+}
+
 function playbackDiagnostic(video){
  const n=value=>Number.isFinite(value)?value.toFixed(2):'?';
  return `위치 ${n(video.currentTime)} / 파일 ${n(video.duration)}초 · paused=${Boolean(video.paused)} · ended=${Boolean(video.ended)} · ready=${video.readyState} · error=${video.error?.code||0}`;
@@ -25,8 +30,8 @@ async function importGalleryVideo(file){
  finally{source?.dispose();$('galleryUpload').value='';lock(false);}
 }
 async function prepareImportedClip(clip){
- const source=await openImportedVideo(clip.sourceBlob);
- return {photos:[],diagnostic:()=>playbackDiagnostic(source.video),position:()=>source.video.currentTime,frame:async()=>source.video,start:async(position=0,rate=1)=>{source.video.playbackRate=rate;await seekDecodedFrame(source.video,position,()=>cancelled);await source.video.play();},dispose:source.dispose};
+ const source=await openImportedVideo(clip.sourceBlob),scale=1;
+ return {photos:[],diagnostic:()=>playbackDiagnostic(source.video),position:()=>source.video.currentTime/scale,frame:async()=>source.video,start:async(position=0,rate=1)=>{source.video.playbackRate=rate*scale;await seekDecodedFrame(source.video,position*scale,()=>cancelled);await source.video.play();},dispose:source.dispose};
 }
 $('galleryUpload').onchange=e=>void importGalleryVideo(e.target.files[0]);
 
@@ -38,10 +43,11 @@ function compactRecording(clip,file){
 }
 async function prepareRecordedClip(clip){
  const source=await openImportedVideo(clip.playbackBlob);
+ const scale=clipPlaybackScale(clip,source.video);
  try{
   const photos=await Promise.all(collageFrames(clip).map(image));
-  return {photos,diagnostic:()=>playbackDiagnostic(source.video),position:()=>source.video.currentTime,frame:async()=>source.video,
-   start:async(position=0,rate=1)=>{source.video.playbackRate=rate;await seekDecodedFrame(source.video,position,()=>cancelled);await source.video.play();},
+  return {photos,diagnostic:()=>playbackDiagnostic(source.video),position:()=>source.video.currentTime/scale,frame:async()=>source.video,
+   start:async(position=0,rate=1)=>{source.video.playbackRate=rate*scale;await seekDecodedFrame(source.video,position*scale,()=>cancelled);await source.video.play();},
    pause:()=>source.video.pause(),dispose(){photos.forEach(img=>img.src='');source.dispose();}};
  }catch(e){source.dispose();throw e;}
 }
