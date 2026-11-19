@@ -14,4 +14,4 @@ test('intro is prepended while full clips remain in export',async()=>{const {eve
 test('opening-only preview does not play the main story',async()=>{const {events,c}=await run(false,true,true);assert.deepEqual(events.filter(e=>e.startsWith('prepare')),['prepare1','prepare2']);assert.equal(c.resultBlob,null);});
 
 
-test('timelapse slows only in opening in export and preview',async()=>{for(const only of [false,true]){const {events}=await run(false,true,only);assert.deepEqual(events.filter(e=>e.startsWith('rate')),only?['rate0.7','rate1']:['rate0.7','rate1','rate1','rate1']);}});
+test('timelapse uses original speed in opening and body in export and preview',async()=>{for(const only of [false,true]){const {events}=await run(false,true,only);assert.deepEqual(events.filter(e=>e.startsWith('rate')),only?['rate1','rate1']:['rate1','rate1','rate1','rate1']);}});

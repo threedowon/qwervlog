@@ -6,7 +6,7 @@ const OPENING_TITLES={making:['things','I’m','making'],life:['day','in my','li
 let opening={ids:[],seconds:.7,title:'making',customText:'',customColor:'#fff8cd'};
 function normalizeOpening(value){return {customColor:validOpeningColor(value?.customColor),customText:typeof value?.customText==='string'?value.customText.slice(0,160):'',title:value?.title==='none'?'custom':['making','life','custom'].includes(value?.title)?value.title:'making',ids:Array.isArray(value?.ids)?[...new Set(value.ids.filter(id=>typeof id==='string'))]:[],seconds:Number.isFinite(Number(value?.seconds))?Math.max(.3,Math.min(1.5,Math.round(Number(value.seconds)*10)/10)):.7};}
 function sequencePlan(clips,settings,onlyOpening=false){
- const ids=new Set(settings.ids),intro=clips.filter(c=>ids.has(c.id)&&!c.sourceBlob).map(clip=>({clip,start:0,seconds:Math.min(settings.seconds,clip.seconds),intro:true,playbackRate:clip.mode==='timelapse'?.7:1,title:settings.title||'making',customText:settings.customText||'',customColor:validOpeningColor(settings.customColor)}));
+ const ids=new Set(settings.ids),intro=clips.filter(c=>ids.has(c.id)&&!c.sourceBlob).map(clip=>({clip,start:0,seconds:Math.min(settings.seconds,clip.seconds),intro:true,title:settings.title||'making',customText:settings.customText||'',customColor:validOpeningColor(settings.customColor)}));
  return onlyOpening?intro:[...intro,...clips.map(clip=>({clip,seconds:clip.seconds,intro:false}))];
 }
 function syncOpening(){
