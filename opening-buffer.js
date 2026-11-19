@@ -6,17 +6,18 @@ async function prepareOpeningMedia(plan,exporting){
  try{
   for(const segment of plan.filter(s=>s.intro)){
    if(cancelled)throw Error('미리보기를 중단했어요.');
-   const clip=segment.clip,frames=[],count=Math.max(1,Math.ceil(segment.seconds*30));
+   const clip=segment.clip,frames=[];let count=Math.max(1,Math.ceil(segment.seconds*30));
    let source=null,surface=null,bounds;
    try{
     if(clip.playbackBlob||clip.sourceBlob){
      source=await openImportedVideo(clip.playbackBlob||clip.sourceBlob);
+     if(Number.isFinite(source.video.duration)&&source.video.duration>0){segment.seconds=Math.min(segment.seconds,Math.max(0,source.video.duration-(segment.start||0)));count=Math.max(1,Math.ceil(segment.seconds*30));}
      surface=document.createElement('canvas');surface.width=exporting?1080:540;surface.height=exporting?1920:960;
      bounds=[0,0,surface.width,surface.height];
      const context=surface.getContext('2d');
      for(let i=0;i<count;i++){
       if(cancelled||document.hidden)throw Error('오프닝 준비를 중단했어요.');
-      await seekDecodedFrame(source.video,((segment.start||0)+i/30)*(clip.playbackBlob?clipPlaybackScale(clip,source.video):1),()=>cancelled);
+      await seekDecodedFrame(source.video,(segment.start||0)+i/30,()=>cancelled);
       context.drawImage(source.video,0,0,surface.width,surface.height);
       const blob=await new Promise((resolve,reject)=>surface.toBlob(value=>value?resolve(value):reject(Error('오프닝 이미지를 준비하지 못했어요.')),'image/jpeg',.92));bytes+=blob.size;
       // Never risk a Safari reload by growing the temporary cache without bound.

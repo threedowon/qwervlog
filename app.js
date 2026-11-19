@@ -108,19 +108,20 @@ async function playPendingClip(){
   const media=reviewPlayback.media||await prepareClip(clip);
   if(token!==reviewPlayback.token||pendingClip!==clip){media.dispose?.();return;}
   reviewPlayback.media=media;
+  const duration=Math.min(clip.seconds,media.duration||clip.seconds);if(reviewPlayback.position>=duration)reviewPlayback.position=0;
   await media.start?.(reviewPlayback.position);
   if(token!==reviewPlayback.token){media.pause?.();return;}
   const start=performance.now()-reviewPlayback.position*1000;
   const step=async now=>{try{
    if(token!==reviewPlayback.token||pendingClip!==clip)return;
    if(document.hidden){pausePendingClip();return;}
-   const elapsed=Math.min(clip.seconds,(now-start)/1000),i=Math.min(clip.frames.length-1,Math.floor(elapsed/clip.seconds*clip.frames.length));
+   const elapsed=Math.min(duration,(now-start)/1000),i=Math.min(clip.frames.length-1,Math.floor(elapsed/clip.seconds*clip.frames.length));
    const source=await media.frame(i);
    if(token!==reviewPlayback.token||pendingClip!==clip)return;
    reviewPlayback.position=elapsed;
    draw(source,media.photos,clip.caption,clip.time,clip.collage,clipLayout(clip),clip.sourceBounds?.[i]);
-   $('reviewProgress').textContent=`${elapsed.toFixed(1)} / ${Number(clip.seconds.toFixed(1))}초`;
-   if(elapsed>=clip.seconds){pausePendingClip();return;}
+   $('reviewProgress').textContent=`${elapsed.toFixed(1)} / ${Number(duration.toFixed(1))}초`;
+   if(elapsed>=duration){pausePendingClip();return;}
    reviewPlayback.raf=requestAnimationFrame(step);
   }catch(e){if(token===reviewPlayback.token){pausePendingClip();status('미리보기를 다시 눌러주세요.');}}};
   reviewPlayback.raf=requestAnimationFrame(step);
@@ -223,6 +224,7 @@ for(let index=0;index<plan.length;index++){
  if(index>0){if(openingMedia.has(segment))media=openingMedia.get(segment);else media=await prepare(clip);}
  if(cancelled)throw Error("미리보기를 중단했어요.");
  const sourceStart=segment.start||0,playbackRate=segment.playbackRate||1;
+ if(Number.isFinite(media.duration)&&media.duration>0)segment.seconds=Math.min(segment.seconds,Math.max(0,media.duration-sourceStart)/playbackRate);
  await media.start?.(sourceStart,playbackRate);
  const firstIndex=Math.min(clip.frames.length-1,Math.floor(sourceStart/clip.seconds*clip.frames.length));
  drawSequenceFrame(await media.frame(firstIndex),media.photos,segment,firstIndex,media.bounds);
@@ -232,8 +234,8 @@ for(let index=0;index<plan.length;index++){
  await new Promise((resolve,reject)=>{async function step(now){try{
   if(cancelled||document.hidden)throw Error('재생 / 저장을 중단했어요. 화면을 켜두고 다시 시도해주세요.');
   const elapsed=(now-start)/1000;
-  if(media.position){const position=media.position();if(position>lastMediaTime+.005){lastMediaTime=position;lastAdvance=now;}else if(now-lastAdvance>1000&&position<clip.seconds-.15)throw Error(`${segment.intro?'오프닝':'본편'} · 목록 ${clips.indexOf(clip)+1}번 컷 재생이 멈췄어요.\n${media.diagnostic?.()||'재생 시간 진행 없음'} · 설정 ${clip.seconds.toFixed(2)}초\n이 진단 내용을 캡처해서 보내주세요.`);}
   if(elapsed>=segment.seconds){resolve();return;}
+  if(media.position){const position=media.position();if(position>lastMediaTime+.005){lastMediaTime=position;lastAdvance=now;}else if(now-lastAdvance>1000&&position<(media.duration||clip.seconds)-.15)throw Error(`${segment.intro?'오프닝':'본편'} · 목록 ${clips.indexOf(clip)+1}번 컷 재생이 멈췄어요.\n${media.diagnostic?.()||'재생 시간 진행 없음'} · 설정 ${clip.seconds.toFixed(2)}초\n이 진단 내용을 캡처해서 보내주세요.`);}
   const frameIndex=Math.min(clip.frames.length-1,Math.floor((sourceStart+elapsed*playbackRate)/clip.seconds*clip.frames.length));
   const source=media.frameAt?await media.frameAt(sourceStart+elapsed*playbackRate):await media.frame(frameIndex);
   drawSequenceFrame(source,media.photos,segment,frameIndex,media.bounds);

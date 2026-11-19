@@ -21,11 +21,11 @@ test('unreadable import releases its URL without leaving a video decoder alive',
 
 test('diagnostics distinguish early EOF from paused playback without exposing file URLs',()=>{const {ctx}=context();const report=ctx.playbackDiagnostic({currentTime:1.5,duration:1.5,paused:true,ended:true,readyState:4});assert.match(report,/위치 1.50 \/ 파일 1.50초/);assert.match(report,/paused=true/);assert.match(report,/ended=true/);assert.doesNotMatch(report,/blob:/);});
 
-test('1.99-second encoded clip plays across its 4.67-second editing timeline',async()=>{
+test('short encoded clips keep native speed and expose actual duration',async()=>{
  const {ctx,video}=context();video.duration=1.99;ctx.collageFrames=()=>[];ctx.image=async()=>({});
  const clip={seconds:4.67,playbackBlob:{}},media=await ctx.prepareRecordedClip(clip);
- await media.start(0);assert.ok(Math.abs(video.playbackRate-1.99/4.67)<1e-9);
- video.currentTime=1.99;assert.ok(Math.abs(media.position()-4.67)<1e-9);
- await media.start(2);assert.ok(Math.abs(video.currentTime-2*1.99/4.67)<1e-9);
+ await media.start(0);assert.equal(video.playbackRate,1);assert.equal(media.duration,1.99);
+ video.currentTime=1.99;assert.equal(media.position(),1.99);
+ await media.start(1);assert.equal(video.currentTime,1);
  assert.equal(clip.seconds,4.67);media.dispose();
 });
