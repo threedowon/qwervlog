@@ -2,7 +2,7 @@
 // Decode opening snippets before playback. Only one video decoder is used at a time;
 // compressed JPEGs and a small image window bridge cuts without video startup waits.
 async function prepareOpeningMedia(plan,exporting){
- const prepared=new Map();let bytes=0;
+ const prepared=new Map(),ownedUrls=new Set();let bytes=0;
  try{
   for(const segment of plan.filter(s=>s.intro)){
    if(cancelled)throw Error('미리보기를 중단했어요.');
@@ -18,10 +18,10 @@ async function prepareOpeningMedia(plan,exporting){
       if(cancelled||document.hidden)throw Error('오프닝 준비를 중단했어요.');
       await seekDecodedFrame(source.video,(segment.start||0)+i/30,()=>cancelled);
       context.drawImage(source.video,0,0,surface.width,surface.height);
-      const frame=surface.toDataURL('image/jpeg',.92);bytes+=frame.length*2;
+      const blob=await new Promise((resolve,reject)=>surface.toBlob(value=>value?resolve(value):reject(Error('오프닝 이미지를 준비하지 못했어요.')),'image/jpeg',.92));bytes+=blob.size;
       // Never risk a Safari reload by growing the temporary cache without bound.
-      if(bytes>64*1024*1024)throw Error('오프닝 준비 용량이 커요. 선택한 컷 수나 컷 길이를 줄여 주세요.');
-      frames.push(frame);
+      if(bytes>64*1024*1024){const error=Error('opening-buffer-budget');error.bufferBudget=true;throw error;}
+      const url=URL.createObjectURL(blob);ownedUrls.add(url);frames.push(url);
      }
     }else{
      for(let i=0;i<count;i++)frames.push(clip.frames[Math.min(clip.frames.length-1,Math.floor(((segment.start||0)+i/30)/clip.seconds*clip.frames.length))]);
@@ -35,10 +35,10 @@ async function prepareOpeningMedia(plan,exporting){
     for(const key of cache.keys())if(key<i||key>i+3)cache.delete(key);
     if(!disposed)for(let j=i+1;j<Math.min(frames.length,i+4);j++)get(j).catch(()=>{});
     return result;
-   },dispose(){disposed=true;cache.clear();frames.length=0;photos.forEach(p=>p.src='');photos.length=0;}};
+   },dispose(){disposed=true;cache.clear();for(const url of frames)if(ownedUrls.delete(url))URL.revokeObjectURL(url);frames.length=0;photos.forEach(p=>p.src='');photos.length=0;}};
    prepared.set(segment,media);await get(0);
    status(`오프닝 준비 중 · ${prepared.size} / ${plan.filter(s=>s.intro).length}컷`);
   }
   return prepared;
- }catch(error){for(const media of prepared.values())media.dispose();throw error;}
+ }catch(error){for(const media of prepared.values())media.dispose();for(const url of ownedUrls)URL.revokeObjectURL(url);ownedUrls.clear();if(error.bufferBudget){status('오프닝 용량에 맞춰 순차 처리로 전환해요.');return new Map();}throw error;}
 }
