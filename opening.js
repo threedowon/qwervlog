@@ -40,8 +40,8 @@ function drawOpeningTitle(title,customText='',customColor){
  ctx.font=font(size);
  lines.forEach((line,i)=>ctx.fillText(line,270,480+(i-(lines.length-1)/2)*lineHeight));ctx.restore();
 }
-function drawSequenceFrame(source,photos,segment,frameIndex=0){
+function drawSequenceFrame(source,photos,segment,frameIndex=0,backgroundBounds){
  const clip=segment.clip,hasTitle=segment.intro&&openingTitleLines(segment.title,segment.customText).length>0;
- draw(source,photos,hasTitle?'':clip.caption,hasTitle?'':clip.time,clip.collage,clipLayout(clip),clip.sourceBlob?[0,0,clip.width,clip.height]:clip.sourceBounds?.[frameIndex]);
+ draw(source,photos,hasTitle?'':clip.caption,hasTitle?'':clip.time,clip.collage,clipLayout(clip),backgroundBounds||(clip.sourceBlob?[0,0,clip.width,clip.height]:clip.sourceBounds?.[frameIndex]));
  if(hasTitle)drawOpeningTitle(segment.title,segment.customText,segment.customColor);
 }

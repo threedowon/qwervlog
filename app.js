@@ -216,7 +216,7 @@ async function prepareClip(clip){
   return get(i);
  }};
 }
-async function sequence(exporting,onlyOpening=false){if(!clips.length||busy)return;const plan=sequencePlan(clips,opening,onlyOpening);if(!plan.length)return;if(!exporting){previewOpeningOnly=onlyOpening;openSequencePreview();}cancelled=false;lock(true);releaseCamera();if(exporting){if(resultURL)URL.revokeObjectURL(resultURL);resultURL=null;resultBlob=null;$('result').removeAttribute('src');$('result').load();$('downloadArea').hidden=true;}$('empty').hidden=true;let recorder=null,outputStream=null;const resources=new Set();let finished=false;const prepare=async clip=>{const media=await prepareClip(clip);if(finished){media.dispose?.();throw Error('미리보기가 종료됐어요.');}resources.add(media);return media;};try{status('컷을 준비하고 있어요…');const openingMedia=await prepareOpeningMedia(plan,exporting);for(const m of openingMedia.values())resources.add(m);const firstBody=plan.find(s=>!s.intro);let readyBody=openingMedia.size&&firstBody?await prepare(firstBody.clip):null;let media=openingMedia.get(plan[0])||await prepare(plan[0].clip);drawSequenceFrame(await media.frame(0),media.photos,plan[0]);let chunks=[];if(exporting){if(!window.MediaRecorder||!canvas.captureStream)throw Error('이 브라우저에서는 영상 저장을 지원하지 않아요. 최신 Safari 또는 Chrome에서 열어주세요.');let type=['video/mp4;codecs=avc1.42E01E','video/mp4','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'].find(t=>MediaRecorder.isTypeSupported(t));if(!type)throw Error('지원되는 영상 저장 형식을 찾지 못했어요.');outputStream=canvas.captureStream(30);recorder=new MediaRecorder(outputStream,{mimeType:type,videoBitsPerSecond:16000000});recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)}}
+async function sequence(exporting,onlyOpening=false){if(!clips.length||busy)return;const plan=sequencePlan(clips,opening,onlyOpening);if(!plan.length)return;if(!exporting){previewOpeningOnly=onlyOpening;openSequencePreview();}cancelled=false;lock(true);releaseCamera();if(exporting){if(resultURL)URL.revokeObjectURL(resultURL);resultURL=null;resultBlob=null;$('result').removeAttribute('src');$('result').load();$('downloadArea').hidden=true;}$('empty').hidden=true;let recorder=null,outputStream=null;const resources=new Set();let finished=false;const prepare=async clip=>{const media=await prepareClip(clip);if(finished){media.dispose?.();throw Error('미리보기가 종료됐어요.');}resources.add(media);return media;};try{status('컷을 준비하고 있어요…');const openingMedia=await prepareOpeningMedia(plan,exporting);for(const m of openingMedia.values())resources.add(m);const firstBody=plan.find(s=>!s.intro);let readyBody=openingMedia.size&&firstBody?await prepare(firstBody.clip):null;let media=openingMedia.get(plan[0])||await prepare(plan[0].clip);drawSequenceFrame(await media.frame(0),media.photos,plan[0],0,media.bounds);let chunks=[];if(exporting){if(!window.MediaRecorder||!canvas.captureStream)throw Error('이 브라우저에서는 영상 저장을 지원하지 않아요. 최신 Safari 또는 Chrome에서 열어주세요.');let type=['video/mp4;codecs=avc1.42E01E','video/mp4','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'].find(t=>MediaRecorder.isTypeSupported(t));if(!type)throw Error('지원되는 영상 저장 형식을 찾지 못했어요.');outputStream=canvas.captureStream(30);recorder=new MediaRecorder(outputStream,{mimeType:type,videoBitsPerSecond:16000000});recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)}}
 for(let index=0;index<plan.length;index++){
  const segment=plan[index],clip=segment.clip;
  // Safari must not warm up another video while this clip is being recorded.
@@ -225,7 +225,7 @@ for(let index=0;index<plan.length;index++){
  const sourceStart=segment.start||0,playbackRate=segment.playbackRate||1;
  await media.start?.(sourceStart,playbackRate);
  const firstIndex=Math.min(clip.frames.length-1,Math.floor(sourceStart/clip.seconds*clip.frames.length));
- drawSequenceFrame(await media.frame(firstIndex),media.photos,segment,firstIndex);
+ drawSequenceFrame(await media.frame(firstIndex),media.photos,segment,firstIndex,media.bounds);
  if(recorder?.state==='inactive')recorder.start(1000);else if(recorder?.state==='paused')recorder.resume();
  const start=performance.now();let lastMediaTime=media.position?.()??0,lastAdvance=start;
 
@@ -236,7 +236,7 @@ for(let index=0;index<plan.length;index++){
   if(elapsed>=segment.seconds){resolve();return;}
   const frameIndex=Math.min(clip.frames.length-1,Math.floor((sourceStart+elapsed*playbackRate)/clip.seconds*clip.frames.length));
   const source=media.frameAt?await media.frameAt(sourceStart+elapsed*playbackRate):await media.frame(frameIndex);
-  drawSequenceFrame(source,media.photos,segment,frameIndex);
+  drawSequenceFrame(source,media.photos,segment,frameIndex,media.bounds);
   status(`${exporting?'1080p 영상 만드는 중':'이어서 보는 중'} · ${segment.intro?'오프닝':'본편'} ${index+1}/${plan.length} 컷`);if(!exporting)$('sequenceProgress').textContent=`${segment.intro?'오프닝':'본편'} · ${index+1} / ${plan.length} 컷`;requestAnimationFrame(step);
  }catch(e){reject(e)}}requestAnimationFrame(step)});
  if(index+1<plan.length&&!openingMedia.has(plan[index+1])&&recorder?.state==='recording')recorder.pause();

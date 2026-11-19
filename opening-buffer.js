@@ -7,11 +7,12 @@ async function prepareOpeningMedia(plan,exporting){
   for(const segment of plan.filter(s=>s.intro)){
    if(cancelled)throw Error('미리보기를 중단했어요.');
    const clip=segment.clip,frames=[],count=Math.max(1,Math.ceil(segment.seconds*30));
-   let source=null,surface=null;
+   let source=null,surface=null,bounds;
    try{
     if(clip.playbackBlob||clip.sourceBlob){
      source=await openImportedVideo(clip.playbackBlob||clip.sourceBlob);
      surface=document.createElement('canvas');surface.width=exporting?1080:540;surface.height=exporting?1920:960;
+     bounds=[0,0,surface.width,surface.height];
      const context=surface.getContext('2d');
      for(let i=0;i<count;i++){
       if(cancelled||document.hidden)throw Error('오프닝 준비를 중단했어요.');
@@ -28,7 +29,7 @@ async function prepareOpeningMedia(plan,exporting){
    }finally{source?.dispose();if(surface){surface.width=surface.height=1;}}
    const photos=await Promise.all(collageFrames(clip).map(image)),cache=new Map();let disposed=false;
    const get=i=>{if(!cache.has(i))cache.set(i,image(frames[i]));return cache.get(i);};
-   const media={photos,frame:()=>get(0),async frameAt(seconds){
+   const media={photos,bounds,frame:()=>get(0),async frameAt(seconds){
     const i=Math.max(0,Math.min(frames.length-1,Math.floor((seconds-(segment.start||0))*30)));
     const result=await get(i);
     for(const key of cache.keys())if(key<i||key>i+3)cache.delete(key);
