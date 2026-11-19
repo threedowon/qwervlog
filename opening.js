@@ -1,7 +1,7 @@
 'use strict';
 let previewOpeningOnly=false;
 function validOpeningColor(value){return /^#[0-9a-f]{6}$/i.test(value||'')?value:'#fff8cd';}
-function openingColor(title,color){return title==='making'?'#C7DFFF':title==='custom'?validOpeningColor(color):'#fff8cd';}
+function openingColor(title,color){return title==='making'?'#fff8cd':title==='custom'?validOpeningColor(color):'#fff8cd';}
 const OPENING_TITLES={making:['things','I’m','making'],life:['day','in my','life']};
 let opening={ids:[],seconds:.7,title:'making',customText:'',customColor:'#fff8cd'};
 function normalizeOpening(value){return {customColor:validOpeningColor(value?.customColor),customText:typeof value?.customText==='string'?value.customText.slice(0,160):'',title:value?.title==='none'?'custom':['making','life','custom'].includes(value?.title)?value.title:'making',ids:Array.isArray(value?.ids)?[...new Set(value.ids.filter(id=>typeof id==='string'))]:[],seconds:Number.isFinite(Number(value?.seconds))?Math.max(.3,Math.min(1.5,Math.round(Number(value.seconds)*10)/10)):.7};}

@@ -74,5 +74,5 @@
 
 .openingColorLabel{display:flex!important;align-items:center;justify-content:space-between;gap:12px;margin-top:12px}
 #openingCustomColor{width:56px;height:44px;min-height:44px;padding:4px;border:1px solid #ddd;border-radius:10px;background:white}
-.openingTitles [data-opening-title="making"][aria-pressed="true"]{color:#c7dfff}
+.openingTitles [data-opening-title="making"][aria-pressed="true"]{color:#fff8cd}
 .openingTitles [data-opening-title="custom"][aria-pressed="true"]{color:var(--title-color,#fff8cd)}
