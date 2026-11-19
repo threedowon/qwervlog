@@ -18,3 +18,5 @@ test('prepared imported video cleans up media URL once on completion or cancella
 test('unreadable import releases its URL without leaving a video decoder alive',async()=>{
  const {ctx,revoked,paused}=context(true);await assert.rejects(ctx.openImportedVideo({}),/영상 형식/);assert.equal(revoked(),1);assert.equal(paused(),1);
 });
+
+test('diagnostics distinguish early EOF from paused playback without exposing file URLs',()=>{const {ctx}=context();const report=ctx.playbackDiagnostic({currentTime:1.5,duration:1.5,paused:true,ended:true,readyState:4});assert.match(report,/위치 1.50 \/ 파일 1.50초/);assert.match(report,/paused=true/);assert.match(report,/ended=true/);assert.doesNotMatch(report,/blob:/);});

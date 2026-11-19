@@ -232,7 +232,7 @@ for(let index=0;index<plan.length;index++){
  await new Promise((resolve,reject)=>{async function step(now){try{
   if(cancelled||document.hidden)throw Error('재생 / 저장을 중단했어요. 화면을 켜두고 다시 시도해주세요.');
   const elapsed=(now-start)/1000;
-  if(media.position){const position=media.position();if(position>lastMediaTime+.005){lastMediaTime=position;lastAdvance=now;}else if(now-lastAdvance>1000&&position<clip.seconds-.15)throw Error(`${index+1}번째 컷 재생이 멈춰 ${exporting?'저장':'미리보기'}를 중단했어요. 다시 시도해 주세요.`);}
+  if(media.position){const position=media.position();if(position>lastMediaTime+.005){lastMediaTime=position;lastAdvance=now;}else if(now-lastAdvance>1000&&position<clip.seconds-.15)throw Error(`${segment.intro?'오프닝':'본편'} · 목록 ${clips.indexOf(clip)+1}번 컷 재생이 멈췄어요.\n${media.diagnostic?.()||'재생 시간 진행 없음'} · 설정 ${clip.seconds.toFixed(2)}초\n이 진단 내용을 캡처해서 보내주세요.`);}
   if(elapsed>=segment.seconds){resolve();return;}
   const frameIndex=Math.min(clip.frames.length-1,Math.floor((sourceStart+elapsed*playbackRate)/clip.seconds*clip.frames.length));
   const source=media.frameAt?await media.frameAt(sourceStart+elapsed*playbackRate):await media.frame(frameIndex);

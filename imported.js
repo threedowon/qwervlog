@@ -1,4 +1,9 @@
 'use strict';
+function playbackDiagnostic(video){
+ const n=value=>Number.isFinite(value)?value.toFixed(2):'?';
+ return `위치 ${n(video.currentTime)} / 파일 ${n(video.duration)}초 · paused=${Boolean(video.paused)} · ended=${Boolean(video.ended)} · ready=${video.readyState} · error=${video.error?.code||0}`;
+}
+
 async function openImportedVideo(blob){return loadVideoFile(blob,()=>cancelled);}
 function importedClip(file,video,thumbnail){
  return {id:crypto.randomUUID(),mode:'imported',sourceBlob:file,filename:file.name,seconds:video.duration,
@@ -21,7 +26,7 @@ async function importGalleryVideo(file){
 }
 async function prepareImportedClip(clip){
  const source=await openImportedVideo(clip.sourceBlob);
- return {photos:[],position:()=>source.video.currentTime,frame:async()=>source.video,start:async(position=0,rate=1)=>{source.video.playbackRate=rate;await seekDecodedFrame(source.video,position,()=>cancelled);await source.video.play();},dispose:source.dispose};
+ return {photos:[],diagnostic:()=>playbackDiagnostic(source.video),position:()=>source.video.currentTime,frame:async()=>source.video,start:async(position=0,rate=1)=>{source.video.playbackRate=rate;await seekDecodedFrame(source.video,position,()=>cancelled);await source.video.play();},dispose:source.dispose};
 }
 $('galleryUpload').onchange=e=>void importGalleryVideo(e.target.files[0]);
 
@@ -35,7 +40,7 @@ async function prepareRecordedClip(clip){
  const source=await openImportedVideo(clip.playbackBlob);
  try{
   const photos=await Promise.all(collageFrames(clip).map(image));
-  return {photos,position:()=>source.video.currentTime,frame:async()=>source.video,
+  return {photos,diagnostic:()=>playbackDiagnostic(source.video),position:()=>source.video.currentTime,frame:async()=>source.video,
    start:async(position=0,rate=1)=>{source.video.playbackRate=rate;await seekDecodedFrame(source.video,position,()=>cancelled);await source.video.play();},
    pause:()=>source.video.pause(),dispose(){photos.forEach(img=>img.src='');source.dispose();}};
  }catch(e){source.dispose();throw e;}
