@@ -39,13 +39,14 @@ function updateDurationLabels(){
  $('record').setAttribute('aria-label',`${mode==='normal'?'일반':'타임랩스'} ${clipLengths[mode]}초 촬영`);
  $('durationSummary').textContent=mode==='normal'?`${clipLengths.normal}초 동안 촬영해요.`:`원하는 만큼 촬영한 뒤 정지하면 ${clipLengths.timelapse}초로 압축해요.`;
 }
+function validClipSeconds(n){return Number.isFinite(n)&&n>=1&&n<=30&&(mode==='normal'?Math.abs(n*10-Math.round(n*10))<1e-8:Number.isInteger(n));}
 function saveDurations(){
- const n=Number($('clipSeconds').value);if(!Number.isInteger(n)||n<1||n>30)return;
+ const n=Number($('clipSeconds').value);if(!validClipSeconds(n))return;
  clipLengths[mode]=n;$('duration').min=clipLengths.timelapse;
  if(Number($('duration').value)<clipLengths.timelapse)$('duration').value=clipLengths.timelapse;
  updateDurationLabels();
 }
-function openDuration(){if(busy||pendingClip)return;durationOriginal={capture:$('duration').value};$('clipSeconds').value=clipLengths[mode];$('captureDurationField').hidden=true;updateDurationLabels();$('durationSheet').showModal();}
+function openDuration(){if(busy||pendingClip)return;durationOriginal={capture:$('duration').value};$('clipSeconds').step=mode==='normal'?'0.1':'1';$('clipSeconds').inputMode=mode==='normal'?'decimal':'numeric';$('clipSeconds').value=clipLengths[mode];$('captureDurationField').hidden=true;updateDurationLabels();$('durationSheet').showModal();}
 
 async function initDB(){try{db=await new Promise((res,rej)=>{let r=indexedDB.open('after-hours-v1',1);r.onupgradeneeded=()=>r.result.createObjectStore('story');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});clipStore=new ClipStore(db);clips=await clipStore.load();opening=normalizeOpening(await clipStore.read('opening'));await Promise.all(clips.map(async clip=>{const edit=await clipStore.read('edit:'+clip.id);if(edit)Object.assign(clip,edit);}));renderList();if(clipStore.recovered)status('중단되기 전에 촬영한 컷을 모아보기에 복구했어요.');}catch(e){status('브라우저 보관함을 사용할 수 없어요. 촬영 후 파일로 저장해 주세요.')}}
 async function persist(){$('downloadArea').hidden=true;await storageReady;if(!clipStore){status('현재 세션에만 보관 중이에요. 파일로 저장해 주세요.');return false}try{await clipStore.save(clips);return true}catch(e){status(storageErrorMessage(e));return false}}
@@ -156,7 +157,7 @@ async function record(){
   const timing=beginTiming();activeCaptureTime=timing.time;
   try{navigator.wakeLock?.request('screen').then(lock=>{if(captureActive)wakeLock=lock;else void lock.release().catch(()=>{});}).catch(()=>{});}catch(e){}
   stopLive();live=true;loop();
-  const seconds=clipLengths[mode],count=seconds*VIDEO_FPS,start=performance.now();let frames=[],bounds=[];
+  const seconds=clipLengths[mode],count=Math.max(1,Math.round(seconds*VIDEO_FPS)),start=performance.now();let frames=[],bounds=[];
   if(mode==='timelapse'){
    const samples=new TimelapseSamples();timelapseRecording=true;$('record').disabled=false;$('record').setAttribute('aria-label','타임랩스 촬영 정지');
    while(!timelapseStop){
@@ -355,7 +356,7 @@ $('collageToggle').onclick=()=>{if(busy||pendingClip)return;$('collage').checked
 
 function previewDuration(){
  const n=Number($('clipSeconds').value);
- if(!Number.isInteger(n)||n<1||n>30){$('durationSummary').textContent='1~30초 사이로 입력해 주세요.';return;}
+ if(!validClipSeconds(n)){$('durationSummary').textContent=mode==='normal'?'1~30초 사이로 0.1초 단위로 입력해 주세요.':'1~30초 사이의 정수로 입력해 주세요.';return;}
  if(mode==='timelapse')$('duration').min=n;
  $('durationSummary').textContent=mode==='normal'?`${n}초 동안 촬영해요.`:`원하는 만큼 촬영한 뒤 정지하면 ${n}초로 압축해요.`;
 }
