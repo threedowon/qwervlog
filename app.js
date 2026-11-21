@@ -191,9 +191,9 @@ async function importVideo(file){
   status('영상의 첫 화면을 읽고 있어요…');
   const recovered=await readBackupTiming(file),timing=recovered?.timing||unknownCaptureTiming();
   source=await loadVideoFile(file,()=>cancelled);const v=source.video,d=v.duration;
-  const own=recovered?.own,importMode=own?(own.mode==='timelapse'?'timelapse':'normal'):mode;
-  const seconds=own?Math.max(1,Math.min(30,Number(own.seconds)||d)):mode==='normal'?Math.min(30,d):clipLengths[mode];
-  const count=Math.max(1,Math.round(seconds*VIDEO_FPS)),span=own?d:mode==='normal'?Math.min(seconds,d):d,frames=[];
+  const own=recovered?.own,importMode=mode==='normal'?'normal':own?(own.mode==='timelapse'?'timelapse':'normal'):mode;
+  const seconds=mode==='normal'?Math.min(clipLengths.normal,d):own?Math.max(1,Math.min(30,Number(own.seconds)||d)):clipLengths[mode];
+  const count=Math.max(1,Math.round(seconds*VIDEO_FPS)),span=mode==='normal'?seconds:d,frames=[];
   for(let i=0;i<count;i++){
    await seekDecodedFrame(v,i*span/count,()=>cancelled);
    frames.push(snapshot(v));status(`영상 준비 중 · ${Math.round((i+1)/count*100)}%`);
